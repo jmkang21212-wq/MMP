@@ -37,6 +37,34 @@ npm run smoke
 
 ## Codex와 Claude Code에 등록
 
+### Codex 로컬 플러그인으로 설치
+
+Codex에서는 저장소 전체를 로컬 플러그인 소스로 사용할 수 있습니다. 플러그인 하나로 MCP와 `mattermost-review-message` 스킬이 함께 설치됩니다.
+
+먼저 저장소에서 의존성과 동작을 확인합니다.
+
+```powershell
+npm ci
+npm test
+npm run smoke
+```
+
+그다음 이 저장소를 개인 마켓플레이스의 `mattermost-manager` 소스로 등록하고 플러그인을 설치합니다. 이 저장소에 포함된 `scripts/install-codex-plugin.ps1`을 실행하면 됩니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-codex-plugin.ps1
+```
+
+설치 상태는 다음 명령으로 확인합니다.
+
+```powershell
+codex plugin list
+```
+
+설치 또는 업데이트 후에는 새 Codex 작업을 열어야 플러그인의 MCP 도구와 스킬이 적용됩니다. 기존의 로컬 SQLite 설정은 `%LOCALAPPDATA%\mattermost-manager-mcp\mattermost.sqlite3`에서 그대로 사용합니다.
+
+아래 방식은 플러그인을 사용하지 않고 MCP만 직접 등록하거나 Claude Code에서도 함께 사용할 때 사용합니다.
+
 ### Windows PowerShell
 
 저장소 루트에서 실행합니다.

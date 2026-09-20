@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mattermost-manager": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/src/server.js"
+      ],
+      "startup_timeout_sec": 10,
+      "tool_timeout_sec": 30
+    }
+  }
+}
