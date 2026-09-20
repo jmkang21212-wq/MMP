@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "mattermost-manager": {
+    "mmp": {
       "command": "node",
       "args": [
         "${PLUGIN_ROOT}/src/server.js"

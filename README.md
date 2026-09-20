@@ -1,4 +1,4 @@
-# Mattermost Manager MCP
+# Mattermost Manager Plugin (MMP)
 
 Codex와 Claude Code에서 함께 사용하는 로컬 stdio MCP 서버입니다. Mattermost Incoming Webhook, 논리 채널, 참여자 식별 정보, 메시지 컨벤션을 로컬 SQLite에 저장하고 자연어로 관리하거나 메시지를 전송할 수 있습니다.
 
@@ -26,8 +26,8 @@ Windows, macOS, Linux에서 실행할 수 있습니다. 아래 GitHub 저장소�
 ## 설치
 
 ```powershell
-gh repo clone kdHyeok/mattermost-manager-mcp
-cd mattermost-manager-mcp
+gh repo clone kdHyeok/MMP
+cd MMP
 npm ci
 npm test
 npm run smoke
@@ -49,7 +49,7 @@ npm test
 npm run smoke
 ```
 
-그다음 이 저장소를 개인 마켓플레이스의 `mattermost-manager` 소스로 등록하고 플러그인을 설치합니다. 이 저장소에 포함된 `scripts/install-codex-plugin.ps1`을 실행하면 됩니다.
+그다음 이 저장소를 개인 마켓플레이스의 `mmp` 소스로 등록하고 플러그인을 설치합니다. 이 저장소에 포함된 `scripts/install-codex-plugin.ps1`을 실행하면 됩니다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-codex-plugin.ps1
@@ -74,22 +74,22 @@ $repoPath = (Resolve-Path .).Path
 $nodePath = (Get-Command node).Source
 $serverPath = Join-Path $repoPath 'src\server.js'
 
-codex mcp add mattermost-manager -- $nodePath $serverPath
-claude mcp add --scope user mattermost-manager -- $nodePath $serverPath
+codex mcp add mmp -- $nodePath $serverPath
+claude mcp add --scope user mmp -- $nodePath $serverPath
 ```
 
 ### macOS 또는 Linux
 
 ```bash
-codex mcp add mattermost-manager -- "$(command -v node)" "$(pwd)/src/server.js"
-claude mcp add --scope user mattermost-manager -- "$(command -v node)" "$(pwd)/src/server.js"
+codex mcp add mmp -- "$(command -v node)" "$(pwd)/src/server.js"
+claude mcp add --scope user mmp -- "$(command -v node)" "$(pwd)/src/server.js"
 ```
 
 등록 상태를 확인합니다.
 
 ```powershell
-codex mcp get mattermost-manager
-claude mcp get mattermost-manager
+codex mcp get mmp
+claude mcp get mmp
 ```
 
 등록 후 새 Codex/Claude 작업을 열어야 도구가 표시될 수 있습니다.
@@ -186,6 +186,8 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 - Windows: `%LOCALAPPDATA%\mattermost-manager-mcp\mattermost.sqlite3`
 - macOS/Linux: `~/mattermost-manager-mcp/mattermost.sqlite3`
 
+MMP로 이름을 변경하기 전에 저장한 데이터와의 호환성을 위해 기존 데이터 디렉터리 이름을 유지합니다.
+
 `MATTERMOST_MCP_DATA_DIR` 환경변수로 위치를 바꿀 수 있습니다. 여러 클라이언트에서 같은 설정을 사용하려면 동일한 경로를 지정하세요.
 
 신뢰하는 로컬 Mattermost가 HTTP만 제공할 때에만 서버 실행 환경에 `MATTERMOST_MCP_ALLOW_HTTP=1`을 설정하세요. 기본값은 HTTPS 전용입니다.
@@ -202,8 +204,8 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 ## 제거
 
 ```powershell
-codex mcp remove mattermost-manager
-claude mcp remove mattermost-manager --scope user
+codex mcp remove mmp
+claude mcp remove mmp --scope user
 ```
 
 MCP 등록 제거는 로컬 SQLite 데이터를 삭제하지 않습니다.

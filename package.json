@@ -1,12 +1,12 @@
 {
-  "name": "mattermost-manager-mcp",
+  "name": "mmp",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Local Mattermost webhook, channel, and message convention MCP server",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kdHyeok/mattermost-manager-mcp.git"
+    "url": "git+https://github.com/kdHyeok/MMP.git"
   },
   "scripts": {
     "start": "node src/server.js",

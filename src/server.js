@@ -4,7 +4,7 @@ import * as z from "zod/v4";
 import { MattermostService, UserError } from "./core.js";
 
 const service = new MattermostService();
-const server = new McpServer({ name: "mattermost-manager", version: "0.1.0" });
+const server = new McpServer({ name: "mmp", version: "0.1.0" });
 
 const name = z.string().trim().min(1).max(64).regex(/^[\p{L}\p{N}](?:[\p{L}\p{N} ._-]*[\p{L}\p{N}._-])?$/u);
 const nullableText = (max) => z.string().trim().min(1).max(max).nullable().optional();

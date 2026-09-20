@@ -1,6 +1,6 @@
 param(
   [string]$MarketplacePath = (Join-Path $env:USERPROFILE '.agents\plugins\marketplace.json'),
-  [string]$PluginPath = (Join-Path $env:USERPROFILE 'plugins\mattermost-manager')
+  [string]$PluginPath = (Join-Path $env:USERPROFILE 'plugins\mmp')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,8 +8,8 @@ $repoPath = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $pluginParent = Split-Path $PluginPath -Parent
 $pluginName = Split-Path $PluginPath -Leaf
 
-if ($pluginName -ne 'mattermost-manager') {
-  throw 'PluginPath must end with mattermost-manager.'
+if ($pluginName -ne 'mmp') {
+  throw 'PluginPath must end with mmp.'
 }
 
 if (Test-Path $PluginPath) {

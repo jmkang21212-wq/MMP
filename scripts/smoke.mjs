@@ -47,7 +47,7 @@ try {
     capabilities: {},
     clientInfo: { name: "smoke-test", version: "1.0.0" },
   });
-  assert.equal(initialized.result.serverInfo.name, "mattermost-manager");
+  assert.equal(initialized.result.serverInfo.name, "mmp");
   child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} })}\n`);
   const listed = await request(2, "tools/list");
   assert.equal(listed.result.tools.length, 21);

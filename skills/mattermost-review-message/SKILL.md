@@ -1,11 +1,11 @@
 ---
 name: mattermost-review-message
-description: Use mattermost-manager for natural-language mm/Mattermost channel or DM messages and lightweight webhook, channel, or global-person CRUD. Resolve people safely through saved identity mappings and remember an approved default channel only within the current Codex task.
+description: Use the mmp MCP for natural-language mm/Mattermost channel or DM messages and lightweight webhook, channel, or global-person CRUD. Resolve people safely through saved identity mappings and remember an approved default channel only within the current Codex task.
 ---
 
 # Mattermost Manager
 
-Use the `mattermost-manager` MCP. Never hard-code or assume a channel name.
+Use the `mmp` MCP. Never hard-code or assume a channel name.
 
 ## Session Default Channel
 

@@ -1,13 +1,13 @@
 {
-  "name": "mattermost-manager",
+  "name": "mmp",
   "version": "0.1.0",
   "description": "Manage Mattermost webhooks, channels, people, conventions, and review messages from Codex.",
   "author": {
     "name": "kdHyeok",
     "url": "https://github.com/kdHyeok"
   },
-  "homepage": "https://github.com/kdHyeok/mattermost-manager-mcp#readme",
-  "repository": "https://github.com/kdHyeok/mattermost-manager-mcp",
+  "homepage": "https://github.com/kdHyeok/MMP#readme",
+  "repository": "https://github.com/kdHyeok/MMP",
   "keywords": [
     "mattermost",
     "mcp",
@@ -16,7 +16,7 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Mattermost Manager",
+    "displayName": "Mattermost Manager Plugin",
     "shortDescription": "Mattermost 메시지와 로컬 설정을 자연어로 관리",
     "longDescription": "등록한 Incoming Webhook, 논리 채널, 사람 매핑, 메시지 컨벤션을 관리하고 리뷰 메시지와 DM을 전송합니다.",
     "developerName": "kdHyeok",
@@ -25,7 +25,7 @@
       "Interactive",
       "Write"
     ],
-    "websiteURL": "https://github.com/kdHyeok/mattermost-manager-mcp",
+    "websiteURL": "https://github.com/kdHyeok/MMP",
     "defaultPrompt": [
       "등록된 Mattermost 채널 목록을 보여줘.",
       "리뷰 요청 mm 메시지를 미리보기 해줘.",
