@@ -1,11 +1,14 @@
 # Mattermost Manager MCP
 
-Codex와 Claude Code에서 함께 사용하는 로컬 stdio MCP 서버입니다. Mattermost Incoming Webhook, 논리 채널, 메시지 컨벤션을 로컬 SQLite에 저장하고 자연어로 관리하거나 메시지를 전송할 수 있습니다.
+Codex와 Claude Code에서 함께 사용하는 로컬 stdio MCP 서버입니다. Mattermost Incoming Webhook, 논리 채널, 참여자 식별 정보, 메시지 컨벤션을 로컬 SQLite에 저장하고 자연어로 관리하거나 메시지를 전송할 수 있습니다.
 
 ## 기능
 
 - Mattermost Incoming Webhook 등록·조회·수정·삭제
 - 여러 논리 채널 및 DM 대상 등록·조회·수정·삭제
+- 전역 사람 정보 CRUD, 이름 부분검색, GitLab 사용자와 Mattermost `@아이디` 매핑
+- 전역 사람을 외래키로 연결하는 논리 채널별 참여자 디렉터리
+- 저장된 사람에게 Incoming Webhook 채널 오버라이드로 개인 DM 전송
 - `{{variable}}` 메시지 컨벤션 CRUD 및 미리보기
 - 한 번의 호출로 여러 채널에 메시지 전송
 - Codex용 자연어 리뷰 메시지·웹훅·채널 관리 스킬
@@ -124,14 +127,29 @@ deploy_ok를 service=api, version=v1.2.0으로 alerts 채널에 보내줘.
 리뷰 요청 mm에 보내줘.
 ```
 
+리뷰 메시지의 정확한 멘션을 위해 본인과 팀원의 식별 정보를 먼저 등록합니다.
+
+```text
+내 이름은 동혁이고 Mattermost 아이디는 qaz000219, GitLab 아이디는 my-gitlab-id야. 나로 등록해줘.
+GitLab review-author는 Mattermost @reviewer.mm을 쓰는 리뷰 요청자야. 특화-팀-BND 참여자로 등록해줘.
+```
+
+Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조회할 수 없습니다. `participant_*`와 `channel_member_*`는 사용자가 제공한 식별 정보를 관리하는 로컬 디렉터리이며, 실제 멤버십을 조회하거나 변경하지 않습니다.
+
+사람 정보는 채널과 독립적으로 한 번만 저장됩니다. `participant_list`의 `name_query`는 이름 일부를 검색하며 여러 명이 나오면 호출자가 대상을 확인해야 합니다. 채널에 없는 사람을 `channel_member_add`할 때 `display_name`을 함께 주면 전역 사람 정보를 먼저 만들고 채널에 연결합니다.
+
+개인 DM은 `message_send_dm`이 선택한 논리 채널의 웹훅으로 `@사용자명` 대상을 오버라이드합니다. Mattermost 서버에서 웹훅의 채널 오버라이드를 허용해야 합니다.
+
 ## 제공 도구
 
 | 영역 | 도구 |
 |---|---|
 | 웹훅 | `webhook_create`, `webhook_list`, `webhook_update`, `webhook_delete` |
 | 채널 | `channel_create`, `channel_list`, `channel_update`, `channel_delete` |
+| 참여자 | `participant_create`, `participant_list`, `participant_update`, `participant_delete` |
+| 채널 참여자 | `channel_member_add`, `channel_member_remove` |
 | 컨벤션 | `convention_create`, `convention_list`, `convention_update`, `convention_delete` |
-| 메시지 | `message_preview`, `message_send` |
+| 메시지 | `message_preview`, `message_send`, `message_send_dm` |
 
 `channel_create`의 `mattermost_channel`을 생략하면 웹훅 생성 시 지정한 기본 채널로 전송합니다. 값을 주면 Mattermost 채널명 또는 `@username`으로 대상을 오버라이드합니다.
 

@@ -50,11 +50,21 @@ try {
   assert.equal(initialized.result.serverInfo.name, "mattermost-manager");
   child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} })}\n`);
   const listed = await request(2, "tools/list");
-  assert.equal(listed.result.tools.length, 14);
+  assert.equal(listed.result.tools.length, 21);
   const called = await request(3, "tools/call", { name: "channel_list", arguments: {} });
   assert.equal(called.result.isError, false);
   assert.equal(called.result.content[0].text, "[]");
-  process.stdout.write(`MCP smoke test passed: ${listed.result.tools.length} tools, channel_list call succeeded.\n`);
+  const created = await request(4, "tools/call", {
+    name: "participant_create",
+    arguments: { display_name: "Test User", mattermost_username: "test.mm", gitlab_username: "test.gitlab" },
+  });
+  assert.equal(created.result.isError, false);
+  const found = await request(5, "tools/call", {
+    name: "participant_list",
+    arguments: { name_query: "User" },
+  });
+  assert.equal(JSON.parse(found.result.content[0].text)[0].mention, "@test.mm");
+  process.stdout.write(`MCP smoke test passed: ${listed.result.tools.length} tools, channel and participant calls succeeded.\n`);
 } finally {
   if (child.exitCode === null) {
     child.kill();
