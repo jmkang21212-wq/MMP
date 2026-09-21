@@ -6,30 +6,45 @@ import { join } from "node:path";
 import test from "node:test";
 import { MattermostService, resolveDataDir } from "../src/core.js";
 
-test("Windows data path is stable without LOCALAPPDATA", { skip: process.platform !== "win32" }, () => {
-  const localAppData = process.env.LOCALAPPDATA;
-  delete process.env.LOCALAPPDATA;
+test("default data path uses the user home outside AppData", () => {
+  assert.equal(resolveDataDir(), join(homedir(), ".mmp"));
+});
+
+test("forwarded Claude USERPROFILE selects shared storage", () => {
+  const forwardedUserProfile = process.env.MATTERMOST_MCP_USERPROFILE;
+  const forwarded = join(tmpdir(), "forwarded-user-profile");
+  process.env.MATTERMOST_MCP_USERPROFILE = forwarded;
   try {
-    assert.equal(resolveDataDir(), join(homedir(), "AppData", "Local", "mattermost-manager-mcp"));
+    assert.equal(resolveDataDir(), join(forwarded, ".mmp"));
   } finally {
-    if (localAppData === undefined) delete process.env.LOCALAPPDATA;
-    else process.env.LOCALAPPDATA = localAppData;
+    if (forwardedUserProfile === undefined) delete process.env.MATTERMOST_MCP_USERPROFILE;
+    else process.env.MATTERMOST_MCP_USERPROFILE = forwardedUserProfile;
   }
 });
 
-test("forwarded Claude LOCALAPPDATA selects shared storage", () => {
-  const localAppData = process.env.LOCALAPPDATA;
-  const forwardedLocalAppData = process.env.MATTERMOST_MCP_LOCALAPPDATA;
-  const forwarded = join(tmpdir(), "forwarded-local-app-data");
-  delete process.env.LOCALAPPDATA;
-  process.env.MATTERMOST_MCP_LOCALAPPDATA = forwarded;
+test("non-empty legacy data migrates once into empty shared storage", () => {
+  const root = mkdtempSync(join(tmpdir(), "mattermost-manager-migration-"));
+  const legacyDir = join(root, "legacy");
+  const sharedDir = join(root, "shared");
+  const legacy = new MattermostService({ dataDir: legacyDir });
+  legacy.createWebhook({ name: "legacy-webhook", webhookUrl: "https://mattermost.example.com/hooks/secret" });
+  legacy.createChannel({ name: "legacy-channel", webhookName: "legacy-webhook" });
+  legacy.createParticipant({ displayName: "Legacy User", mattermostUsername: "legacy.user" });
+  legacy.addChannelMember({ channelName: "legacy-channel", mattermostUsername: "legacy.user" });
+  legacy.createConvention({ name: "legacy-convention", template: "{{message}}" });
+  legacy.close();
+
+  const shared = new MattermostService({ dataDir: sharedDir });
   try {
-    assert.equal(resolveDataDir(), join(forwarded, "mattermost-manager-mcp"));
+    assert.equal(shared.migrateLegacyData(join(legacyDir, "mattermost.sqlite3")), true);
+    assert.equal(shared.listWebhooks().length, 1);
+    assert.equal(shared.listChannels().length, 1);
+    assert.equal(shared.listParticipants().length, 1);
+    assert.equal(shared.listConventions().length, 1);
+    assert.equal(shared.migrateLegacyData(join(legacyDir, "mattermost.sqlite3")), false);
   } finally {
-    if (localAppData === undefined) delete process.env.LOCALAPPDATA;
-    else process.env.LOCALAPPDATA = localAppData;
-    if (forwardedLocalAppData === undefined) delete process.env.MATTERMOST_MCP_LOCALAPPDATA;
-    else process.env.MATTERMOST_MCP_LOCALAPPDATA = forwardedLocalAppData;
+    shared.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

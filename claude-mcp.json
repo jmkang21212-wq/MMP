@@ -6,6 +6,7 @@
         "${CLAUDE_PLUGIN_ROOT}/src/server.js"
       ],
       "env": {
+        "MATTERMOST_MCP_USERPROFILE": "${USERPROFILE:-__MMP_UNSET__}",
         "MATTERMOST_MCP_LOCALAPPDATA": "${LOCALAPPDATA:-__MMP_UNSET__}"
       }
     }

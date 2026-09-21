@@ -1,4 +1,4 @@
-import { mkdirSync, chmodSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -34,11 +34,18 @@ function requireUsername(value, label) {
 export function resolveDataDir(explicitPath) {
   if (explicitPath) return explicitPath;
   if (process.env.MATTERMOST_MCP_DATA_DIR) return process.env.MATTERMOST_MCP_DATA_DIR;
+  const forwardedUserProfile = process.env.MATTERMOST_MCP_USERPROFILE;
+  const base = forwardedUserProfile && forwardedUserProfile !== "__MMP_UNSET__"
+    ? forwardedUserProfile
+    : homedir();
+  return join(base, ".mmp");
+}
+
+function resolveLegacyDataDir() {
   const forwardedLocalAppData = process.env.MATTERMOST_MCP_LOCALAPPDATA;
   const base = process.env.LOCALAPPDATA
-    || (forwardedLocalAppData === "__MMP_UNSET__" ? undefined : forwardedLocalAppData)
-    || (process.platform === "win32" ? join(homedir(), "AppData", "Local") : homedir());
-  return join(base, "mattermost-manager-mcp");
+    || (forwardedLocalAppData === "__MMP_UNSET__" ? undefined : forwardedLocalAppData);
+  return base ? join(base, "mattermost-manager-mcp") : null;
 }
 
 function prepareDataDir(path) {
@@ -116,6 +123,7 @@ function escapeLike(value) {
 
 export class MattermostService {
   constructor({ dataDir, allowHttp, fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {}) {
+    const shouldMigrateLegacy = dataDir === undefined && !process.env.MATTERMOST_MCP_DATA_DIR;
     this.dataDir = resolveDataDir(dataDir);
     this.allowHttp = allowHttp ?? process.env.MATTERMOST_MCP_ALLOW_HTTP === "1";
     this.fetch = fetchImpl;
@@ -167,6 +175,12 @@ export class MattermostService {
         PRIMARY KEY (channel_id, participant_id)
       );
     `);
+    if (shouldMigrateLegacy) {
+      const legacyDataDir = resolveLegacyDataDir();
+      if (legacyDataDir && legacyDataDir !== this.dataDir) {
+        this.migrateLegacyData(join(legacyDataDir, "mattermost.sqlite3"));
+      }
+    }
     try {
       chmodSync(join(this.dataDir, "mattermost.sqlite3"), 0o600);
     } catch {
@@ -176,6 +190,37 @@ export class MattermostService {
 
   close() {
     this.db.close();
+  }
+
+  migrateLegacyData(databasePath) {
+    const currentPath = join(this.dataDir, "mattermost.sqlite3");
+    if (!databasePath || databasePath === currentPath || !existsSync(databasePath)) return false;
+    this.db.prepare("ATTACH DATABASE ? AS legacy").run(databasePath);
+    try {
+      const tables = ["webhooks", "channels", "conventions", "participants", "channel_members"];
+      const hasSchema = tables.every((table) => this.db.prepare(
+        "SELECT 1 FROM legacy.sqlite_master WHERE type = 'table' AND name = ?",
+      ).get(table));
+      if (!hasSchema) return false;
+      const count = (database, table) => Number(this.db.prepare(`SELECT COUNT(*) AS count FROM ${database}.${table}`).get().count);
+      if (tables.some((table) => count("main", table) > 0)) return false;
+      if (tables.every((table) => count("legacy", table) === 0)) return false;
+      this.db.exec(`
+        BEGIN IMMEDIATE;
+        INSERT INTO main.webhooks SELECT * FROM legacy.webhooks;
+        INSERT INTO main.channels SELECT * FROM legacy.channels;
+        INSERT INTO main.conventions SELECT * FROM legacy.conventions;
+        INSERT INTO main.participants SELECT * FROM legacy.participants;
+        INSERT INTO main.channel_members SELECT * FROM legacy.channel_members;
+        COMMIT;
+      `);
+      return true;
+    } catch (error) {
+      try { this.db.exec("ROLLBACK"); } catch {}
+      throw error;
+    } finally {
+      this.db.exec("DETACH DATABASE legacy");
+    }
   }
 
   createWebhook({ name, webhookUrl }) {

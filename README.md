@@ -69,7 +69,7 @@ codex plugin list
 
 출력에서 `mmp@personal`이 활성화되어 있는지 확인합니다.
 
-설치 또는 업데이트 후에는 새 Codex 작업을 열어야 플러그인의 MCP 도구와 스킬이 적용됩니다. 기존의 로컬 SQLite 설정은 `%LOCALAPPDATA%\mattermost-manager-mcp\mattermost.sqlite3`에서 그대로 사용합니다.
+설치 또는 업데이트 후에는 새 Codex 작업을 열어야 플러그인의 MCP 도구와 스킬이 적용됩니다. 로컬 SQLite 설정은 `~/.mmp/mattermost.sqlite3`에서 Codex와 Claude가 함께 사용하며, 기존 Windows AppData 데이터는 첫 실행 때 자동 이전됩니다.
 
 ### Claude Code 플러그인으로 설치
 
@@ -458,13 +458,11 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 
 ## 데이터 저장 위치
 
-- Windows: `%LOCALAPPDATA%\mattermost-manager-mcp\mattermost.sqlite3`
-- macOS/Linux: `~/mattermost-manager-mcp/mattermost.sqlite3`
+- 모든 운영체제: `~/.mmp/mattermost.sqlite3`
 
-Windows에서는 Claude Code가 `LOCALAPPDATA` 환경변수를 전달하지 않아도 같은 사용자 계정의 `AppData\Local\mattermost-manager-mcp`를 사용합니다.
-Claude 플러그인은 제한된 MCP 자식 환경에서도 이 경로를 유지하도록 부모의 `LOCALAPPDATA`를 명시적으로 전달합니다.
+Claude Desktop이 Windows `AppData`를 격리해도 Codex와 같은 파일을 보도록 사용자 홈 바로 아래의 `.mmp`를 사용합니다. Claude 플러그인은 제한된 MCP 자식 환경에서도 같은 홈 경로를 계산하도록 부모의 `USERPROFILE`을 명시적으로 전달합니다.
 
-MMP로 이름을 변경하기 전에 저장한 데이터와의 호환성을 위해 기존 데이터 디렉터리 이름을 유지합니다.
+Windows의 기존 `%LOCALAPPDATA%\mattermost-manager-mcp\mattermost.sqlite3`에 데이터가 있고 새 저장소가 비어 있으면 첫 실행 때 웹훅, 채널, 참여자, 컨벤션을 자동 이전합니다. 기존 파일은 삭제하지 않습니다.
 
 `MATTERMOST_MCP_DATA_DIR` 환경변수로 위치를 바꿀 수 있습니다. 여러 클라이언트에서 같은 설정을 사용하려면 동일한 경로를 지정하세요.
 
