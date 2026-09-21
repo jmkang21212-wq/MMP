@@ -1,6 +1,6 @@
 {
   "name": "mmp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Manage Mattermost webhooks, channels, people, conventions, and review messages from Codex.",
   "author": {
     "name": "kdHyeok",

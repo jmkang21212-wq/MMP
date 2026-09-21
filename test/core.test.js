@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { MattermostService } from "../src/core.js";
+import { MattermostService, resolveDataDir } from "../src/core.js";
+
+test("Windows data path is stable without LOCALAPPDATA", { skip: process.platform !== "win32" }, () => {
+  const localAppData = process.env.LOCALAPPDATA;
+  delete process.env.LOCALAPPDATA;
+  try {
+    assert.equal(resolveDataDir(), join(homedir(), "AppData", "Local", "mattermost-manager-mcp"));
+  } finally {
+    if (localAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = localAppData;
+  }
+});
 
 test("CRUD, template rendering, secret redaction, and webhook delivery", async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "mattermost-manager-test-"));

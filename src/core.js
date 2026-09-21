@@ -31,10 +31,11 @@ function requireUsername(value, label) {
   }
 }
 
-function resolveDataDir(explicitPath) {
+export function resolveDataDir(explicitPath) {
   if (explicitPath) return explicitPath;
   if (process.env.MATTERMOST_MCP_DATA_DIR) return process.env.MATTERMOST_MCP_DATA_DIR;
-  const base = process.env.LOCALAPPDATA || homedir();
+  const base = process.env.LOCALAPPDATA
+    || (process.platform === "win32" ? join(homedir(), "AppData", "Local") : homedir());
   return join(base, "mattermost-manager-mcp");
 }
 

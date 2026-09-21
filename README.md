@@ -94,6 +94,8 @@ claude plugin install mmp@mmp-local --scope user
 
 Claude Code는 `claude-mcp.json`의 `${CLAUDE_PLUGIN_ROOT}`를 사용하고, Codex는 `.mcp.json`의 `${PLUGIN_ROOT}`를 사용합니다. 두 클라이언트 모두 같은 서버 코드와 로컬 SQLite 데이터를 사용합니다.
 
+Claude Code에서 리뷰 메시지 스킬을 직접 실행하는 명령은 `/mmp:mattermost-review-message`입니다. 이는 Codex의 `mattermost-review-message`와 같은 스킬이며, 연결되는 MCP 서버는 `plugin:mmp:mmp`로 표시됩니다. 설정이 비어 있다고 나오면 플러그인을 업데이트한 뒤 새 Claude Code 세션을 시작하세요.
+
 ### MCP만 직접 등록
 
 아래 방식은 플러그인 스킬 없이 MCP 도구만 직접 등록할 때 사용합니다.
@@ -457,6 +459,8 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 
 - Windows: `%LOCALAPPDATA%\mattermost-manager-mcp\mattermost.sqlite3`
 - macOS/Linux: `~/mattermost-manager-mcp/mattermost.sqlite3`
+
+Windows에서는 Claude Code가 `LOCALAPPDATA` 환경변수를 전달하지 않아도 같은 사용자 계정의 `AppData\Local\mattermost-manager-mcp`를 사용합니다.
 
 MMP로 이름을 변경하기 전에 저장한 데이터와의 호환성을 위해 기존 데이터 디렉터리 이름을 유지합니다.
 

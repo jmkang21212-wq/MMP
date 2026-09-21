@@ -1,7 +1,7 @@
 {
   "name": "mmp",
   "displayName": "Mattermost Manager Plugin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Manage Mattermost webhooks, channels, people, conventions, review messages, and DMs from Claude Code.",
   "author": {
     "name": "kdHyeok",
