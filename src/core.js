@@ -7,6 +7,11 @@ const NAME_PATTERN = /^[\p{L}\p{N}](?:[\p{L}\p{N} ._-]*[\p{L}\p{N}._-])?$/u;
 const USERNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9_-])?$/;
 const PLACEHOLDER_PATTERN = /\{\{([A-Za-z_][A-Za-z0-9_.-]*)\}\}/g;
 const MAX_MESSAGE_LENGTH = 16_000;
+const REVIEW_CONVENTIONS = new Map([
+  ["review-request", ":merge_please:"],
+  ["review-complete", ":review_complete_shake:"],
+]);
+const REVIEW_TEXT_PATTERN = /(?:리뷰(?:를)?\s*(?:요청|완료|부탁)|검토\s*부탁|\breview\s+(?:request|requested|complete|completed|please)\b)/iu;
 
 export class UserError extends Error {}
 
@@ -69,6 +74,21 @@ function redactWebhookUrl(value) {
 
 function variablesIn(template) {
   return [...new Set([...template.matchAll(PLACEHOLDER_PATTERN)].map((match) => match[1]))];
+}
+
+function reviewMessage(conventionName, variables) {
+  const emoji = REVIEW_CONVENTIONS.get(conventionName);
+  if (!emoji) return null;
+  const mention = String(variables.mention ?? "");
+  const mrNumber = String(variables.mr_number ?? "");
+  const jiraKey = String(variables.jira_key ?? "");
+  const message = String(variables.message ?? "");
+  if (!mention.startsWith("@")) throw new UserError("Review mention must start with @.");
+  requireUsername(mention.slice(1), "review mention");
+  if (!/^\d+$/.test(mrNumber)) throw new UserError("Review mr_number must contain digits only, without !.");
+  if (!jiraKey || /[\[\]\r\n]/u.test(jiraKey)) throw new UserError("Review jira_key must be one line without brackets.");
+  if (!message.trim() || /[\r\n]/u.test(message)) throw new UserError("Review message must be one non-empty line.");
+  return `${mention} ${emoji} !${mrNumber} | [${jiraKey}] ${message}`;
 }
 
 export function renderTemplate(template, variables = {}) {
@@ -439,7 +459,12 @@ export class MattermostService {
   previewMessage({ conventionName, variables = {} }) {
     const convention = this.#convention(conventionName);
     if (!convention) throw new UserError(`Convention '${conventionName}' does not exist.`);
-    return { conventionName, text: renderTemplate(convention.template, variables) };
+    const text = renderTemplate(convention.template, variables);
+    const expected = reviewMessage(conventionName, variables);
+    if (expected !== null && text !== expected) {
+      throw new UserError(`Convention '${conventionName}' must render the canonical one-line review format.`);
+    }
+    return { conventionName, text };
   }
 
   async sendMessage({ channelNames, conventionName, variables = {}, text }) {
@@ -469,6 +494,9 @@ export class MattermostService {
     const channel = this.#channelForSend(viaChannelName);
     if (!channel) throw new UserError(`Channel '${viaChannelName}' does not exist.`);
     if (!channel.enabled) throw new UserError(`Channel '${viaChannelName}' is disabled.`);
+    if (REVIEW_CONVENTIONS.has(conventionName) && variables.mention !== `@${participant.mattermost_username}`) {
+      throw new UserError("Review DM mention must match the selected participant's Mattermost username.");
+    }
     const rendered = this.#messageText({ conventionName, variables, text });
     const payload = { text: rendered, channel: `@${participant.mattermost_username}` };
     if (channel.username) payload.username = channel.username;
@@ -500,6 +528,9 @@ export class MattermostService {
   }
 
   #messageText({ conventionName, variables, text }) {
+    if (!conventionName && REVIEW_TEXT_PATTERN.test(text ?? "")) {
+      throw new UserError("Review messages must use convention_name 'review-request' or 'review-complete'; direct text is not allowed.");
+    }
     const rendered = conventionName ? this.previewMessage({ conventionName, variables }).text : text;
     if (!rendered) throw new UserError("Provide convention_name or text.");
     if (rendered.length > MAX_MESSAGE_LENGTH) throw new UserError(`Message exceeds ${MAX_MESSAGE_LENGTH} characters.`);

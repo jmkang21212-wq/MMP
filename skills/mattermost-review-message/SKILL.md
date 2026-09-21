@@ -28,6 +28,8 @@ Use the `mmp` MCP. Never hard-code or assume a channel name.
 
 ## Review Messages
 
+These review rules override the Direct Messages section whenever the user asks for a review request or review completion, including when the destination is a named person's DM. Never treat a review DM as ordinary direct text.
+
 Classify natural variants such as `리뷰 요청 mm에 보내줘`, `리뷰요청 mm으로 보내줘`, or `리뷰 완료 Mattermost에 보내줘`:
 
 - A review request uses convention `review-request`.
@@ -49,12 +51,14 @@ The rendered result must be exactly one line:
 
 Use `:merge_please:` for a review request and `:review_complete_shake:` for a completed review. Keep the message natural and concise for the current context. Default to `리뷰 부탁드립니당.` or `리뷰 완료 했습니다.` when no more specific wording is needed. Add code-change summaries or verification details only when explicitly requested.
 
-Call `message_send` with the selected logical channel, the matching convention, and these variables:
+For a channel review message, call `message_send`. For a review DM, call `message_send_dm` with the resolved participant and `via_channel_name`. In both cases, always pass the matching `convention_name` and these variables; never pass review content through `text`:
 
 - `mention`: includes `@`
 - `mr_number`: numeric value without `!`
 - `jira_key`: without brackets
 - `message`: final short message
+
+For a review DM, the destination override `@username` is routing metadata, not the visible mention. The rendered message body must still begin with the exact `mention` returned by `participant_list`.
 
 If the user asks only to draft or preview, do not send. Treat delivery as complete only when the selected channel's result has `ok: true`; otherwise report the failure without claiming delivery.
 
@@ -75,11 +79,13 @@ Store usernames without `@`; use the returned `mention` when composing messages.
 
 ## Direct Messages
 
+This section applies to non-review DMs. Review request and review completion DMs must follow the stricter Review Messages section above.
+
 - Resolve the recipient from the global directory. Prefer exact Mattermost or GitLab identifiers; otherwise use `name_query` and apply the ambiguity rule above.
 - A person does not need to belong to the selected logical channel to receive a DM. The channel supplies only the saved webhook credentials.
 - If no person matches, ask for the display name and Mattermost username, create the global participant, and continue with the pending message. Do not add channel membership unless the user also requests it.
 - Select `via_channel_name` using the same session-default rules as channel messages. The webhook must permit destination overrides; report the Mattermost error if it does not.
-- Call `message_send_dm` with the selected row's numeric `participant_id`, the via channel, and exactly one of a convention or direct text.
+- Call `message_send_dm` with the selected row's numeric `participant_id`, the via channel, and exactly one of a convention or direct text. Direct text is allowed only for non-review DMs.
 - Before a preview or confirmation-required send, show the resolved display name, exact `@mention`, via channel, and message. If lookup returns multiple people, never preview or send until the user chooses one.
 
 ## Natural Webhook CRUD

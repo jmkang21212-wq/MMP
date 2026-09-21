@@ -61,6 +61,10 @@ test("CRUD, template rendering, secret redaction, and webhook delivery", async (
     service.removeChannelMember({ channelName: "나에게 보내기", mattermostUsername: "requester.mm" });
     assert.deepEqual(service.listParticipants({ mattermostUsername: "requester.mm" })[0].channels, []);
     service.createConvention({ name: "deploy_ok", template: "✅ {{service}} {{version}} deployed" });
+    service.createConvention({
+      name: "review-request",
+      template: "{{mention}} :merge_please: !{{mr_number}} | [{{jira_key}}] {{message}}",
+    });
     service.updateConvention({ name: "deploy_ok", description: "Successful deployment" });
     assert.deepEqual(service.listConventions({ name: "deploy_ok" })[0].variables, ["service", "version"]);
     assert.equal(service.previewMessage({ conventionName: "deploy_ok", variables: { service: "api", version: "v1" } }).text, "✅ api v1 deployed");
@@ -72,6 +76,62 @@ test("CRUD, template rendering, secret redaction, and webhook delivery", async (
     });
     assert.equal(dm.ok, true);
     assert.deepEqual(received, { text: "DM hello", channel: "@requester.mm", username: "Codex" });
+
+    await service.sendDirectMessage({
+      participantId: requester.id,
+      viaChannelName: "나에게 보내기",
+      text: "리뷰 회의는 오후 3시입니다.",
+    });
+    assert.equal(received.text, "리뷰 회의는 오후 3시입니다.");
+
+    const reviewDm = await service.sendDirectMessage({
+      participantId: requester.id,
+      viaChannelName: "나에게 보내기",
+      conventionName: "review-request",
+      variables: {
+        mention: "@requester.mm",
+        mr_number: 124,
+        jira_key: "S15P21C206-124",
+        message: "리뷰 부탁드립니당.",
+      },
+    });
+    assert.equal(reviewDm.ok, true);
+    assert.deepEqual(received, {
+      text: "@requester.mm :merge_please: !124 | [S15P21C206-124] 리뷰 부탁드립니당.",
+      channel: "@requester.mm",
+      username: "Codex",
+    });
+    await assert.rejects(
+      service.sendDirectMessage({
+        participantId: requester.id,
+        viaChannelName: "나에게 보내기",
+        conventionName: "review-request",
+        variables: {
+          mention: "@qaz000219",
+          mr_number: 124,
+          jira_key: "S15P21C206-124",
+          message: "리뷰 부탁드립니당.",
+        },
+      }),
+      /mention must match the selected participant/,
+    );
+    await assert.rejects(
+      service.sendDirectMessage({
+        participantId: requester.id,
+        viaChannelName: "나에게 보내기",
+        text: "성용이형, MR !124 리뷰 부탁드립니다.",
+      }),
+      /Review messages must use convention_name/,
+    );
+    assert.throws(() => service.previewMessage({
+      conventionName: "review-request",
+      variables: {
+        mention: "성용이형",
+        mr_number: 124,
+        jira_key: "S15P21C206-124",
+        message: "리뷰 부탁드립니당.",
+      },
+    }), /mention must start with @/);
 
     const sent = await service.sendMessage({
       channelNames: ["나에게 보내기"],
@@ -87,6 +147,7 @@ test("CRUD, template rendering, secret redaction, and webhook delivery", async (
     service.deleteParticipant({ mattermostUsername: "requester.mm" });
     service.deleteParticipant({ mattermostUsername: "other.dh" });
     service.deleteConvention({ name: "deploy_ok" });
+    service.deleteConvention({ name: "review-request" });
     service.deleteWebhook({ name: "특화-프로젝트" });
     assert.deepEqual(service.listWebhooks(), []);
   } finally {

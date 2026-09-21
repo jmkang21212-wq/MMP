@@ -11,7 +11,8 @@ Codex와 Claude Code에서 함께 사용하는 로컬 stdio MCP 서버입니다.
 - 저장된 사람에게 Incoming Webhook 채널 오버라이드로 개인 DM 전송
 - `{{variable}}` 메시지 컨벤션 CRUD 및 미리보기
 - 한 번의 호출로 여러 채널에 메시지 전송
-- Codex용 자연어 리뷰 메시지·웹훅·채널 관리 스킬
+- Codex·Claude Code 공용 자연어 리뷰 메시지·웹훅·채널 관리 스킬
+- 리뷰 요청·완료 메시지의 정확한 `@멘션`, 상태 이모지, MR/Jira 한 줄 형식 강제
 
 ## 요구 환경
 
@@ -21,7 +22,7 @@ Codex와 Claude Code에서 함께 사용하는 로컬 stdio MCP 서버입니다.
 - Codex CLI 또는 Claude Code
 - 메시지를 보낼 Mattermost Incoming Webhook URL
 
-Windows, macOS, Linux에서 실행할 수 있습니다. 아래 GitHub 저장소가 비공개인 동안에는 접근 권한과 GitHub 인증이 필요합니다.
+Windows, macOS, Linux에서 실행할 수 있습니다. 현재 GitHub 저장소는 공개되어 있으며, 저장소가 비공개로 전환된 경우에만 접근 권한과 GitHub 인증이 필요합니다.
 
 ## 설치
 
@@ -36,6 +37,11 @@ npm run smoke
 `gh`를 사용하지 않으면 접근 권한이 있는 Git 자격 증명으로 저장소를 복제한 뒤 `npm ci`를 실행하세요.
 
 ## Codex와 Claude Code에 등록
+
+| 클라이언트 | 설치 후 표시되는 플러그인 | 포함 기능 | 적용 시점 |
+|---|---|---|---|
+| Codex | `mmp@personal` | MCP 서버, 공용 자연어 스킬, MMP 아이콘 | 새 Codex 작업 |
+| Claude Code | `mmp@mmp-local` | MCP 서버, 동일한 자연어 스킬 | 새 Claude Code 세션 |
 
 ### Codex 로컬 플러그인으로 설치
 
@@ -61,9 +67,36 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-codex-plugin.ps1
 codex plugin list
 ```
 
+출력에서 `mmp@personal`이 활성화되어 있는지 확인합니다.
+
 설치 또는 업데이트 후에는 새 Codex 작업을 열어야 플러그인의 MCP 도구와 스킬이 적용됩니다. 기존의 로컬 SQLite 설정은 `%LOCALAPPDATA%\mattermost-manager-mcp\mattermost.sqlite3`에서 그대로 사용합니다.
 
-아래 방식은 플러그인을 사용하지 않고 MCP만 직접 등록하거나 Claude Code에서도 함께 사용할 때 사용합니다.
+### Claude Code 플러그인으로 설치
+
+Claude Code에서도 같은 `mattermost-review-message` 스킬과 MCP 서버를 플러그인 하나로 설치할 수 있습니다. 저장소 루트의 `.claude-plugin` 마켓플레이스를 추가한 뒤 설치합니다.
+
+```powershell
+claude plugin marketplace add ./ --scope user
+claude plugin install mmp@mmp-local --scope user
+claude plugin list
+```
+
+출력에서 `mmp@mmp-local`의 `enabled`가 `true`이고 MCP 서버 `mmp`가 표시되는지 확인합니다.
+
+GitHub에서 직접 설치할 다른 사용자는 저장소 접근 권한과 Git 인증 후 아래처럼 등록합니다.
+
+```powershell
+claude plugin marketplace add kdHyeok/MMP --scope user
+claude plugin install mmp@mmp-local --scope user
+```
+
+설치 후 새 Claude Code 세션을 시작합니다. 개발 중인 현재 파일을 설치 없이 시험하려면 저장소의 부모 디렉터리에서 `claude --plugin-dir .\MMP`를 실행할 수 있습니다.
+
+Claude Code는 `claude-mcp.json`의 `${CLAUDE_PLUGIN_ROOT}`를 사용하고, Codex는 `.mcp.json`의 `${PLUGIN_ROOT}`를 사용합니다. 두 클라이언트 모두 같은 서버 코드와 로컬 SQLite 데이터를 사용합니다.
+
+### MCP만 직접 등록
+
+아래 방식은 플러그인 스킬 없이 MCP 도구만 직접 등록할 때 사용합니다.
 
 ### Windows PowerShell
 
@@ -94,9 +127,9 @@ claude mcp get mmp
 
 등록 후 새 Codex/Claude 작업을 열어야 도구가 표시될 수 있습니다.
 
-## Codex 자연어 스킬 설치
+## 자연어 스킬만 별도 설치
 
-MCP 도구 이름을 직접 말하지 않고 `웹훅 목록 보여줘`, `리뷰 요청 mm에 보내줘`처럼 사용하려면 포함된 스킬을 설치합니다.
+플러그인을 설치하지 않고도 MCP 도구 이름을 직접 말하지 않은 채 `웹훅 목록 보여줘`, `리뷰 요청 mm에 보내줘`처럼 사용하려면 포함된 스킬을 별도 설치할 수 있습니다. 아래 수동 복사는 Codex용이며, Claude Code는 위 플러그인 설치를 권장합니다.
 
 ### Windows PowerShell
 
@@ -168,6 +201,8 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 
 개인 DM은 `message_send_dm`이 선택한 논리 채널의 웹훅으로 `@사용자명` 대상을 오버라이드합니다. Mattermost 서버에서 웹훅의 채널 오버라이드를 허용해야 합니다.
 
+리뷰 요청과 리뷰 완료는 채널·DM 모두 자유문 `text` 전송이 차단됩니다. 각각 `review-request`, `review-complete` 컨벤션을 사용해야 하며, DM 본문도 선택한 참여자의 정확한 `@아이디`로 시작해야 합니다. 대상 오버라이드만 설정하고 본문 멘션을 빼는 방식은 거부됩니다.
+
 ## 제공 도구
 
 | 영역 | 도구 |
@@ -206,6 +241,8 @@ MMP로 이름을 변경하기 전에 저장한 데이터와의 호환성을 위�
 ```powershell
 codex mcp remove mmp
 claude mcp remove mmp --scope user
+claude plugin uninstall mmp@mmp-local --scope user
+claude plugin marketplace remove mmp-local
 ```
 
 MCP 등록 제거는 로컬 SQLite 데이터를 삭제하지 않습니다.

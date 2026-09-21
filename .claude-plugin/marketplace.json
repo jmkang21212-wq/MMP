@@ -1,0 +1,14 @@
+{
+  "name": "mmp-local",
+  "owner": {
+    "name": "kdHyeok"
+  },
+  "description": "Local marketplace for the Mattermost Manager Plugin.",
+  "plugins": [
+    {
+      "name": "mmp",
+      "source": ".",
+      "description": "Mattermost Manager Plugin for Claude Code"
+    }
+  ]
+}

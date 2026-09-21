@@ -1,6 +1,6 @@
 {
   "name": "mmp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Manage Mattermost webhooks, channels, people, conventions, and review messages from Codex.",
   "author": {
     "name": "kdHyeok",
@@ -31,6 +31,8 @@
       "리뷰 요청 mm 메시지를 미리보기 해줘.",
       "등록된 사람과 GitLab-Mattermost 매핑을 보여줘."
     ],
-    "brandColor": "#0058CC"
+    "brandColor": "#0058CC",
+    "composerIcon": "./assets/mmp-icon.png",
+    "logo": "./assets/mmp-icon.png"
   }
 }

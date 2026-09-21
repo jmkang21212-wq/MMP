@@ -4,7 +4,7 @@ import * as z from "zod/v4";
 import { MattermostService, UserError } from "./core.js";
 
 const service = new MattermostService();
-const server = new McpServer({ name: "mmp", version: "0.1.0" });
+const server = new McpServer({ name: "mmp", version: "0.2.0" });
 
 const name = z.string().trim().min(1).max(64).regex(/^[\p{L}\p{N}](?:[\p{L}\p{N} ._-]*[\p{L}\p{N}._-])?$/u);
 const nullableText = (max) => z.string().trim().min(1).max(max).nullable().optional();
@@ -187,12 +187,12 @@ register("convention_delete", {
 }, (args) => service.deleteConvention(args));
 
 register("message_preview", {
-  description: "Render a convention without sending it. Fails when a required variable is missing.",
+  description: "Render a convention without sending it. Reserved review conventions enforce the canonical one-line mention format.",
   inputSchema: z.object({ convention_name: name, variables: variables.optional().default({}) }), annotations: readOnly,
 }, ({ convention_name, variables }) => service.previewMessage({ conventionName: convention_name, variables }));
 
 register("message_send", {
-  description: "Send one rendered convention or direct text to one or more saved logical channels. Returns a per-channel result.",
+  description: "Send one rendered convention or direct text to saved logical channels. Review requests/completions must use review-request/review-complete, never direct text.",
   inputSchema: z.object({
     channel_names: z.array(name).min(1).max(20),
     convention_name: name.optional(),
@@ -206,7 +206,7 @@ register("message_send", {
 });
 
 register("message_send_dm", {
-  description: "Send a convention or direct text to one saved global participant by id, using a logical channel's webhook credentials and overriding the destination to that participant's Mattermost username.",
+  description: "Send to one saved participant by id through a logical channel webhook. Review messages must use a review convention and the rendered body must still begin with the participant's @mention; the DM destination alone is not a mention.",
   inputSchema: z.object({
     participant_id: z.int().positive(),
     via_channel_name: name,

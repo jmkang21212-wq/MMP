@@ -1,0 +1,15 @@
+{
+  "name": "mmp",
+  "displayName": "Mattermost Manager Plugin",
+  "version": "0.2.0",
+  "description": "Manage Mattermost webhooks, channels, people, conventions, review messages, and DMs from Claude Code.",
+  "author": {
+    "name": "kdHyeok",
+    "url": "https://github.com/kdHyeok"
+  },
+  "homepage": "https://github.com/kdHyeok/MMP#readme",
+  "repository": "https://github.com/kdHyeok/MMP",
+  "keywords": ["mattermost", "mcp", "review"],
+  "skills": "./skills/",
+  "mcpServers": "./claude-mcp.json"
+}
