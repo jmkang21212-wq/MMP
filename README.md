@@ -452,6 +452,7 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 | 채널 참여자 | `channel_member_add`, `channel_member_remove` |
 | 컨벤션 | `convention_create`, `convention_list`, `convention_update`, `convention_delete` |
 | 메시지 | `message_preview`, `message_send`, `message_send_dm` |
+| 진단 | `storage_info` |
 
 `channel_create`의 `mattermost_channel`을 생략하면 웹훅 생성 시 지정한 기본 채널로 전송합니다. 값을 주면 Mattermost 채널명 또는 `@username`으로 대상을 오버라이드합니다.
 
@@ -461,10 +462,13 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 - macOS/Linux: `~/mattermost-manager-mcp/mattermost.sqlite3`
 
 Windows에서는 Claude Code가 `LOCALAPPDATA` 환경변수를 전달하지 않아도 같은 사용자 계정의 `AppData\Local\mattermost-manager-mcp`를 사용합니다.
+Claude 플러그인은 제한된 MCP 자식 환경에서도 이 경로를 유지하도록 부모의 `LOCALAPPDATA`를 명시적으로 전달합니다.
 
 MMP로 이름을 변경하기 전에 저장한 데이터와의 호환성을 위해 기존 데이터 디렉터리 이름을 유지합니다.
 
 `MATTERMOST_MCP_DATA_DIR` 환경변수로 위치를 바꿀 수 있습니다. 여러 클라이언트에서 같은 설정을 사용하려면 동일한 경로를 지정하세요.
+
+두 클라이언트의 목록이 다르면 `storage_info`로 실제 데이터 디렉터리와 저장 건수를 비교하세요. 이 도구는 웹훅 URL을 반환하지 않습니다.
 
 신뢰하는 로컬 Mattermost가 HTTP만 제공할 때에만 서버 실행 환경에 `MATTERMOST_MCP_ALLOW_HTTP=1`을 설정하세요. 기본값은 HTTPS 전용입니다.
 

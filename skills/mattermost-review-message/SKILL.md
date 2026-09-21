@@ -7,6 +7,13 @@ description: Use the mmp MCP for natural-language mm/Mattermost channel or DM me
 
 Use the `mmp` MCP. Never hard-code or assume a channel name.
 
+## Shared Storage Diagnostics
+
+- Codex and Claude Code are expected to share the same local SQLite data. If saved webhooks, channels, participants, and conventions are all unexpectedly empty, call `storage_info` before asking the user to register them again.
+- Report the returned `dataDir` and counts without exposing webhook URLs. Never conclude that data was never registered solely from empty list results.
+- If another client or a fresh process sees nonzero counts for the same `dataDir`, explain that the current MCP process is stale and ask the user to reconnect MMP or start a new session before retrying the original request.
+- If the returned `dataDir` differs between clients, set `MATTERMOST_MCP_DATA_DIR` to one shared directory in both MCP configurations; do not copy or recreate secrets as a workaround.
+
 ## Session Default Channel
 
 - A session means the current Codex task. Do not persist its default channel to SQLite or reuse it in another task.

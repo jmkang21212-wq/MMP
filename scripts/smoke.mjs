@@ -50,16 +50,21 @@ try {
   assert.equal(initialized.result.serverInfo.name, "mmp");
   child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} })}\n`);
   const listed = await request(2, "tools/list");
-  assert.equal(listed.result.tools.length, 21);
-  const called = await request(3, "tools/call", { name: "channel_list", arguments: {} });
+  assert.equal(listed.result.tools.length, 22);
+  const storage = await request(3, "tools/call", { name: "storage_info", arguments: {} });
+  assert.deepEqual(JSON.parse(storage.result.content[0].text), {
+    dataDir,
+    counts: { webhooks: 0, channels: 0, participants: 0, conventions: 0 },
+  });
+  const called = await request(4, "tools/call", { name: "channel_list", arguments: {} });
   assert.equal(called.result.isError, false);
   assert.equal(called.result.content[0].text, "[]");
-  const created = await request(4, "tools/call", {
+  const created = await request(5, "tools/call", {
     name: "participant_create",
     arguments: { display_name: "Test User", mattermost_username: "test.mm", gitlab_username: "test.gitlab" },
   });
   assert.equal(created.result.isError, false);
-  const found = await request(5, "tools/call", {
+  const found = await request(6, "tools/call", {
     name: "participant_list",
     arguments: { name_query: "User" },
   });

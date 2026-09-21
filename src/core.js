@@ -34,7 +34,9 @@ function requireUsername(value, label) {
 export function resolveDataDir(explicitPath) {
   if (explicitPath) return explicitPath;
   if (process.env.MATTERMOST_MCP_DATA_DIR) return process.env.MATTERMOST_MCP_DATA_DIR;
+  const forwardedLocalAppData = process.env.MATTERMOST_MCP_LOCALAPPDATA;
   const base = process.env.LOCALAPPDATA
+    || (forwardedLocalAppData === "__MMP_UNSET__" ? undefined : forwardedLocalAppData)
     || (process.platform === "win32" ? join(homedir(), "AppData", "Local") : homedir());
   return join(base, "mattermost-manager-mcp");
 }

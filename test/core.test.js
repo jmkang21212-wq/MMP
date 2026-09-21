@@ -17,6 +17,22 @@ test("Windows data path is stable without LOCALAPPDATA", { skip: process.platfor
   }
 });
 
+test("forwarded Claude LOCALAPPDATA selects shared storage", () => {
+  const localAppData = process.env.LOCALAPPDATA;
+  const forwardedLocalAppData = process.env.MATTERMOST_MCP_LOCALAPPDATA;
+  const forwarded = join(tmpdir(), "forwarded-local-app-data");
+  delete process.env.LOCALAPPDATA;
+  process.env.MATTERMOST_MCP_LOCALAPPDATA = forwarded;
+  try {
+    assert.equal(resolveDataDir(), join(forwarded, "mattermost-manager-mcp"));
+  } finally {
+    if (localAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = localAppData;
+    if (forwardedLocalAppData === undefined) delete process.env.MATTERMOST_MCP_LOCALAPPDATA;
+    else process.env.MATTERMOST_MCP_LOCALAPPDATA = forwardedLocalAppData;
+  }
+});
+
 test("CRUD, template rendering, secret redaction, and webhook delivery", async () => {
   const dataDir = mkdtempSync(join(tmpdir(), "mattermost-manager-test-"));
   let received;

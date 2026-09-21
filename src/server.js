@@ -4,7 +4,7 @@ import * as z from "zod/v4";
 import { MattermostService, UserError } from "./core.js";
 
 const service = new MattermostService();
-const server = new McpServer({ name: "mmp", version: "0.2.1" });
+const server = new McpServer({ name: "mmp", version: "0.2.4" });
 
 const name = z.string().trim().min(1).max(64).regex(/^[\p{L}\p{N}](?:[\p{L}\p{N} ._-]*[\p{L}\p{N}._-])?$/u);
 const nullableText = (max) => z.string().trim().min(1).max(max).nullable().optional();
@@ -33,6 +33,19 @@ function register(name, config, handler) {
     }
   });
 }
+
+register("storage_info", {
+  description: "Show the resolved local data directory and saved item counts for diagnosing shared Codex/Claude storage.",
+  inputSchema: z.object({}), annotations: readOnly,
+}, () => ({
+  dataDir: service.dataDir,
+  counts: {
+    webhooks: service.listWebhooks().length,
+    channels: service.listChannels().length,
+    participants: service.listParticipants().length,
+    conventions: service.listConventions().length,
+  },
+}));
 
 register("webhook_create", {
   description: "Register a Mattermost incoming webhook. The secret URL is stored locally and never returned by read tools.",
