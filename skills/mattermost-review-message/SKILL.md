@@ -135,7 +135,8 @@ Mattermost incoming webhooks cannot receive messages or add reactions, so an inc
    - If the evidence you need is missing — the diff came back truncated and you did not re-fetch the file, the tests could not run, the project is not checked out locally — do not post a confident review. Post what you can support and say plainly which parts are unchecked, or post nothing and tell the user why.
    - Do not repeat a point an existing discussion already made. Read `discussions` first and build on it.
    - When the merge request already has your earlier review, the useful comment is whether the author's fixes hold, not a fresh pass.
-6. Report the completion to Mattermost with the existing `review-complete` convention through `message_send_dm` or `message_send`, following the Review Messages rules above. Send it only after the GitLab note is posted.
+6. Report the completion to Mattermost with the `review-complete` convention through `message_send` or `message_send_dm`, without asking. Send it only after `gitlab_note_create` returned `ok`; if posting failed, report the failure to the user and send nothing. Use the session default channel when one is set, and otherwise follow the Session Default Channel rules to establish one. Address the person who requested the review, resolved through `participant_list` as in the Review Messages rules.
+   - Keep the one line honest about what the review concluded. `리뷰 완료 했습니다.` alone reads as approval, so when the review raises something blocking, say so in the same line instead: `리뷰 완료 했습니다. <짧은 사유> 확인 부탁드립니다.`
 
 Resolve the merge request author or requester to a Mattermost mention with `participant_list` and `gitlab_username`, exactly as for review requests. If no mapping exists, ask; do not guess.
 
