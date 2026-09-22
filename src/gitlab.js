@@ -92,6 +92,12 @@ export class GitLabService {
         reviewed_at TEXT,
         PRIMARY KEY (site_id, project_id, mr_iid)
       );
+      CREATE TABLE IF NOT EXISTS gitlab_notified_todos (
+        site_id INTEGER NOT NULL REFERENCES gitlab_sites(id) ON DELETE CASCADE,
+        todo_id INTEGER NOT NULL,
+        notified_at TEXT NOT NULL,
+        PRIMARY KEY (site_id, todo_id)
+      );
     `);
     const columns = this.db.prepare("PRAGMA table_info(gitlab_review_state)").all();
     if (!columns.some((column) => column.name === "notified_at")) {
@@ -197,7 +203,16 @@ export class GitLabService {
       if (by?.username && !entry.triggeredBy.some((one) => one.username === by.username)) entry.triggeredBy.push(by);
       grouped.set(key, entry);
     }
-    const items = [...grouped.values()].map((entry) => ({ ...entry, ...this.#trackState(site.id, entry, { write: track }) }));
+    // A merge request stays silent only while every todo behind it has been
+    // announced. A later comment or description mention arrives as a new todo id
+    // and reopens it, which the merge-request-level flag alone cannot express.
+    // Reviewer assignment carries no todo, so that flag remains its fallback.
+    const notifiedTodos = this.#notifiedTodoIds(site.id);
+    const items = [...grouped.values()].map((entry) => {
+      const state = this.#trackState(site.id, entry, { write: track });
+      const newTodoIds = entry.todoIds.filter((todoId) => !notifiedTodos.has(todoId));
+      return { ...entry, ...state, newTodoIds, notified: state.notified && newTodoIds.length === 0 };
+    });
     return {
       site: site.name,
       actions: [...allowed],
@@ -226,7 +241,7 @@ export class GitLabService {
       if (existing) {
         if (!existing.reasons.includes("review_requested")) existing.reasons.push("review_requested");
       } else {
-        merged.set(key, { ...item, reasons: ["review_requested"], todoIds: [] });
+        merged.set(key, { ...item, reasons: ["review_requested"], todoIds: [], newTodoIds: [] });
       }
     }
     const items = [...merged.values()];
@@ -244,15 +259,21 @@ export class GitLabService {
     const timestamp = now();
     const update = this.db.prepare("UPDATE gitlab_review_state SET notified_at = ? WHERE site_id = ? AND project_id = ? AND mr_iid = ?");
     const insert = this.db.prepare("INSERT INTO gitlab_review_state(site_id, project_id, mr_iid, first_seen_at, last_updated_at, notified_at) VALUES (?, ?, ?, ?, ?, ?)");
+    const rememberTodo = this.db.prepare("INSERT OR IGNORE INTO gitlab_notified_todos(site_id, todo_id, notified_at) VALUES (?, ?, ?)");
     let marked = 0;
+    let markedTodos = 0;
     for (const entry of mergeRequests) {
       const changed = update.run(timestamp, site.id, entry.projectId, entry.mrIid);
       if (Number(changed.changes) === 0) {
         insert.run(site.id, entry.projectId, entry.mrIid, timestamp, entry.updatedAt ?? null, timestamp);
       }
+      for (const todoId of entry.todoIds ?? []) {
+        if (!Number.isInteger(todoId)) continue;
+        markedTodos += Number(rememberTodo.run(site.id, todoId, timestamp).changes);
+      }
       marked += 1;
     }
-    return { ok: true, site: site.name, marked };
+    return { ok: true, site: site.name, marked, markedTodos };
   }
 
   async markTodoDone({ siteName, todoId }) {
@@ -403,6 +424,11 @@ export class GitLabService {
     const site = this.#site(name);
     if (!site) throw new UserError(`GitLab site '${name}' does not exist.`);
     return site;
+  }
+
+  #notifiedTodoIds(siteId) {
+    const rows = this.db.prepare("SELECT todo_id FROM gitlab_notified_todos WHERE site_id = ?").all(siteId);
+    return new Set(rows.map((row) => Number(row.todo_id)));
   }
 
   #trackState(siteId, summary, { write = true } = {}) {
