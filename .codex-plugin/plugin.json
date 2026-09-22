@@ -14,7 +14,7 @@
     "review"
   ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./codex-mcp.json",
   "interface": {
     "displayName": "Mattermost Manager Plugin",
     "shortDescription": "Mattermost 메시지와 로컬 설정을 자연어로 관리",

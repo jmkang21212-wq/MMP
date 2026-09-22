@@ -17,7 +17,7 @@ if (Test-Path $PluginPath) {
 }
 
 New-Item -ItemType Directory -Force -Path $pluginParent, $PluginPath | Out-Null
-foreach ($item in @('.codex-plugin', 'assets', 'skills', 'src', '.mcp.json', 'package.json', 'package-lock.json', 'README.md')) {
+foreach ($item in @('.codex-plugin', 'assets', 'skills', 'src', 'codex-mcp.json', 'package.json', 'package-lock.json', 'README.md')) {
   Copy-Item -Path (Join-Path $repoPath $item) -Destination $PluginPath -Recurse
 }
 

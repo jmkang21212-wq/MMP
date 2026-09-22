@@ -92,7 +92,9 @@ claude plugin install mmp@mmp-local --scope user
 
 설치 후 새 Claude Code 세션을 시작합니다. 개발 중인 현재 파일을 설치 없이 시험하려면 저장소의 부모 디렉터리에서 `claude --plugin-dir .\MMP`를 실행할 수 있습니다.
 
-Claude Code는 `claude-mcp.json`의 `${CLAUDE_PLUGIN_ROOT}`를 사용하고, Codex는 `.mcp.json`의 `${PLUGIN_ROOT}`를 사용합니다. 두 클라이언트 모두 같은 서버 코드와 로컬 SQLite 데이터를 사용합니다.
+Claude Code는 `claude-mcp.json`의 `${CLAUDE_PLUGIN_ROOT}`를 사용하고, Codex는 `codex-mcp.json`의 `${PLUGIN_ROOT}`를 사용합니다. 두 클라이언트 모두 같은 서버 코드와 로컬 SQLite 데이터를 사용합니다.
+
+Codex 설정 파일 이름은 `.mcp.json`이 아니라 `codex-mcp.json`입니다. `.mcp.json`은 Claude Code가 프로젝트 스코프 MCP 설정으로 자동 인식하는 예약 파일명이어서, 이 저장소 안에서 Claude Code를 실행하면 `${PLUGIN_ROOT}`를 확장하지 못한 채 서버를 띄우려다 실패합니다. Codex는 `.codex-plugin/plugin.json`의 `mcpServers` 값으로 경로를 찾으므로 파일명이 달라도 문제없습니다.
 
 Claude Code에서 리뷰 메시지 스킬을 직접 실행하는 명령은 `/mmp:mattermost-review-message`입니다. 이는 Codex의 `mattermost-review-message`와 같은 스킬이며, 연결되는 MCP 서버는 `plugin:mmp:mmp`로 표시됩니다. 설정이 비어 있다고 나오면 플러그인을 업데이트한 뒤 새 Claude Code 세션을 시작하세요.
 
