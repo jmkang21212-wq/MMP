@@ -123,11 +123,18 @@ Mattermost incoming webhooks cannot receive messages or add reactions, so an inc
 
 1. Call BOTH `gitlab_review_inbox` and `gitlab_todo_inbox`, then merge the results by merge request. Neither covers the other: `gitlab_review_inbox` lists open merge requests where the token owner is a reviewer, while `gitlab_todo_inbox` lists pending todos, which is the only way to see an @mention in a description or a comment. A reviewer assignment stops producing a todo once that todo is cleared, so a merge request can appear in one and not the other. `is_new` marks the first sighting, `changed_since_review` marks a merge request that moved after your last posted note, and `reasons` says why each one is in the queue. Report new items with title, author, and `!<iid>`; do not open anything the user did not choose.
    - `gitlab_todo_inbox` excludes merged and closed merge requests by default because GitLab keeps their todos pending. Do not pass `include_closed` unless the user asks about old items.
-   - After a merge request is fully handled, `gitlab_todo_done` clears its todo ids so it stops reappearing. Only clear todos for work the user confirmed is finished.
+   - Once a merge request's review is posted and reported, clear its todo ids with `gitlab_todo_done` without being asked. A handled merge request must not keep appearing in the inbox.
+   - A cleared merge request that shows a todo again was tagged after you finished, which is a request to review it again. Treat it as new work: read the discussion added since your last note and review what changed, rather than repeating the review you already posted.
 2. `gitlab_mr_ack` puts the `eyes` award emoji on the merge request as the acknowledgement that replaces a Mattermost reaction. It is safe to repeat and reports `already_acknowledged`. Acknowledge only the merge request the user is actually taking on.
 3. `gitlab_mr_changes` returns metadata, the diff, and existing discussions. Check `diff_truncated`; when true, say so instead of reviewing as if the whole diff were read, and narrow to specific files if needed.
-4. Draft the review and show it to the user in full. A merge request comment is visible to everyone with project access and cannot be unsent.
-5. `gitlab_note_create` posts only after the user approves that exact body. Never post a draft, a placeholder, or a body the user has not seen. Pass `file_path` and `line` together for a diff line comment; omit both for a merge request comment. One approval covers one body.
+4. Write the review and post it with `gitlab_note_create` without asking first, then show the user what was posted. The user has authorised this. Pass `file_path` and `line` together for a diff line comment; omit both for a merge request comment.
+5. Because nobody checks the body before it reaches the author, the evidence rules below replace that check and are not optional.
+   - State as fact only what you verified in this session by reading the code or running something. Everything else is phrased as a question or left out.
+   - Quote real output for every failure you claim: the assertion message, the error line, the command. Never paraphrase an error you did not see.
+   - Name what you could not verify and why, in the comment itself. A reviewer who says nothing about the gaps is worse than one who names them.
+   - If the evidence you need is missing — the diff came back truncated and you did not re-fetch the file, the tests could not run, the project is not checked out locally — do not post a confident review. Post what you can support and say plainly which parts are unchecked, or post nothing and tell the user why.
+   - Do not repeat a point an existing discussion already made. Read `discussions` first and build on it.
+   - When the merge request already has your earlier review, the useful comment is whether the author's fixes hold, not a fresh pass.
 6. Report the completion to Mattermost with the existing `review-complete` convention through `message_send_dm` or `message_send`, following the Review Messages rules above. Send it only after the GitLab note is posted.
 
 Resolve the merge request author or requester to a Mattermost mention with `participant_list` and `gitlab_username`, exactly as for review requests. If no mapping exists, ask; do not guess.

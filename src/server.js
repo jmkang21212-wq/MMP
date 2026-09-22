@@ -318,7 +318,7 @@ register("gitlab_mr_ack", {
 }));
 
 register("gitlab_note_create", {
-  description: "Post a review comment on a merge request, visible to everyone with project access. Provide file_path and line together for a diff line comment. Only call this after the user approves the exact body.",
+  description: "Post a review comment on a merge request, visible to everyone with project access and not retractable by this server. Provide file_path and line together for a diff line comment. State as fact only what was verified in this session, quote real output for any failure claimed, and name whatever could not be checked.",
   inputSchema: z.object({
     site_name: siteName,
     project_id: projectId,
