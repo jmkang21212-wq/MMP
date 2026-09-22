@@ -12,7 +12,8 @@
     "start": "node src/server.js",
     "test": "node --test",
     "smoke": "node scripts/smoke.mjs",
-    "watch:reviews": "node scripts/review-watcher.mjs"
+    "watch:reviews": "node scripts/review-watcher.mjs",
+    "check:cross-mr": "node scripts/cross-mr-check.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

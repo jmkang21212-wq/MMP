@@ -63,6 +63,7 @@ function summarizeMergeRequest(mr) {
     draft: Boolean(mr.draft ?? mr.work_in_progress),
     webUrl: mr.web_url,
     updatedAt: mr.updated_at,
+    headSha: mr.sha ?? null,
   };
 }
 
@@ -98,6 +99,21 @@ export class GitLabService {
         notified_at TEXT NOT NULL,
         PRIMARY KEY (site_id, todo_id)
       );
+      CREATE TABLE IF NOT EXISTS gitlab_review_findings (
+        id INTEGER PRIMARY KEY,
+        site_id INTEGER NOT NULL REFERENCES gitlab_sites(id) ON DELETE CASCADE,
+        project_id INTEGER NOT NULL,
+        mr_iid INTEGER NOT NULL,
+        head_sha TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        paths TEXT NOT NULL,
+        blocking INTEGER NOT NULL,
+        raised_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolved_head_sha TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_gitlab_findings_open
+        ON gitlab_review_findings (site_id, project_id, mr_iid);
     `);
     const columns = this.db.prepare("PRAGMA table_info(gitlab_review_state)").all();
     if (!columns.some((column) => column.name === "notified_at")) {
@@ -168,6 +184,26 @@ export class GitLabService {
       newCount: items.filter((item) => item.isNew).length,
       mergeRequests: items,
     };
+  }
+
+  // Every merge request open in one project, regardless of who reviews it. Checking
+  // one branch against the others needs all of them: reviewInbox only sees the ones
+  // the token owner reviews, and two merge requests can break each other without
+  // either author being a reviewer of the other. Cross-project pairs never merge
+  // together, so the project is required rather than optional.
+  async listOpenMergeRequests({ siteName, projectId, limit = 50 }) {
+    const site = this.#requireSite(siteName);
+    const project = projectPath(projectId);
+    const size = Number(limit);
+    if (!Number.isInteger(size) || size < 1 || size > 100) {
+      throw new UserError("limit must be an integer between 1 and 100.");
+    }
+    const rows = await this.#request(
+      site,
+      `projects/${project}/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=${size}`,
+    );
+    const items = (Array.isArray(rows) ? rows : []).map(summarizeMergeRequest);
+    return { site: site.name, count: items.length, mergeRequests: items };
   }
 
   async todoInbox({ siteName, limit = 50, actions, includeClosed = false, track = true }) {
@@ -274,6 +310,86 @@ export class GitLabService {
       marked += 1;
     }
     return { ok: true, site: site.name, marked, markedTodos };
+  }
+
+  // What a review objected to, kept past the session that wrote it.
+  //
+  // A re-review has to answer one question: did the author touch what the
+  // objection was about? The merge request's discussions carry the prose, but
+  // re-deriving "which files did I mean" from prose is guesswork. Recording the
+  // paths with the head they were raised against turns that into a diff.
+  //
+  // Nothing here reads git. The caller diffs head_sha against the new head and
+  // intersects with paths; this only remembers.
+  recordFindings({ siteName, projectId, mrIid, headSha, findings }) {
+    const site = this.#requireSite(siteName);
+    if (typeof headSha !== "string" || !/^[0-9a-f]{7,64}$/.test(headSha)) {
+      throw new UserError("head_sha must be the commit the review looked at.");
+    }
+    if (!Array.isArray(findings) || !findings.length) throw new UserError("findings must be a non-empty array.");
+    const timestamp = now();
+    const insert = this.db.prepare(`INSERT INTO gitlab_review_findings
+      (site_id, project_id, mr_iid, head_sha, summary, paths, blocking, raised_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ids = [];
+    for (const finding of findings) {
+      const summary = finding?.summary;
+      if (typeof summary !== "string" || !summary.trim() || summary.length > 500) {
+        throw new UserError("Each finding needs a summary of 1-500 characters.");
+      }
+      // Empty paths is allowed: some objections are about the merge request
+      // itself, not a file. They just cannot be checked by diffing.
+      const paths = finding.paths ?? [];
+      if (!Array.isArray(paths) || paths.some((p) => typeof p !== "string" || !p.trim() || p.length > 1024)) {
+        throw new UserError("finding.paths must be repository paths.");
+      }
+      const row = insert.run(site.id, Number(projectId), Number(mrIid), headSha, summary.trim(),
+        JSON.stringify(paths), finding.blocking ? 1 : 0, timestamp);
+      ids.push(Number(row.lastInsertRowid));
+    }
+    return { ok: true, site: site.name, mrIid: Number(mrIid), recorded: ids.length, ids };
+  }
+
+  listFindings({ siteName, projectId, mrIid, includeResolved = false }) {
+    const site = this.#requireSite(siteName);
+    const rows = this.db.prepare(`SELECT id, head_sha, summary, paths, blocking, raised_at, resolved_at, resolved_head_sha
+      FROM gitlab_review_findings
+      WHERE site_id = ? AND project_id = ? AND mr_iid = ?${includeResolved ? "" : " AND resolved_at IS NULL"}
+      ORDER BY id`).all(site.id, Number(projectId), Number(mrIid));
+    const findings = rows.map((row) => ({
+      id: row.id,
+      headSha: row.head_sha,
+      summary: row.summary,
+      paths: JSON.parse(row.paths),
+      blocking: Boolean(row.blocking),
+      raisedAt: row.raised_at,
+      resolvedAt: row.resolved_at ?? null,
+      resolvedHeadSha: row.resolved_head_sha ?? null,
+    }));
+    return {
+      site: site.name,
+      mrIid: Number(mrIid),
+      openCount: findings.filter((item) => !item.resolvedAt).length,
+      blockingCount: findings.filter((item) => !item.resolvedAt && item.blocking).length,
+      findings,
+    };
+  }
+
+  resolveFindings({ siteName, ids, headSha }) {
+    const site = this.#requireSite(siteName);
+    if (!Array.isArray(ids) || !ids.length) throw new UserError("ids must be a non-empty array.");
+    if (headSha !== undefined && (typeof headSha !== "string" || !/^[0-9a-f]{7,64}$/.test(headSha))) {
+      throw new UserError("head_sha must be the commit that resolved them.");
+    }
+    const timestamp = now();
+    const update = this.db.prepare(`UPDATE gitlab_review_findings SET resolved_at = ?, resolved_head_sha = ?
+      WHERE id = ? AND site_id = ? AND resolved_at IS NULL`);
+    let resolved = 0;
+    for (const id of ids) {
+      if (!Number.isInteger(id) || id <= 0) throw new UserError("ids must be positive integers.");
+      resolved += Number(update.run(timestamp, headSha ?? null, id, site.id).changes);
+    }
+    return { ok: true, site: site.name, resolved, requested: ids.length };
   }
 
   async markTodoDone({ siteName, todoId }) {

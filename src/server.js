@@ -293,6 +293,44 @@ register("gitlab_todo_done", {
   inputSchema: z.object({ site_name: siteName, todo_id: z.int().positive() }), annotations: network,
 }, ({ site_name, todo_id }) => gitlab.markTodoDone({ siteName: site_name, todoId: todo_id }));
 
+register("gitlab_finding_record", {
+  description: "Remember what a review objected to, with the head sha it was raised against and the paths it concerns. A later re-review diffs that head against the new one to see whether the author touched them.",
+  inputSchema: z.object({
+    site_name: siteName,
+    project_id: projectId,
+    mr_iid: mrIid,
+    head_sha: z.string().trim().regex(/^[0-9a-f]{7,64}$/),
+    findings: z.array(z.object({
+      summary: z.string().trim().min(1).max(500),
+      paths: z.array(z.string().trim().min(1).max(1024)).optional().default([]),
+      blocking: z.boolean().optional().default(false),
+    })).min(1).max(50),
+  }), annotations: mutate,
+}, ({ site_name, project_id, mr_iid, head_sha, findings }) => gitlab.recordFindings({
+  siteName: site_name, projectId: project_id, mrIid: mr_iid, headSha: head_sha, findings,
+}));
+
+register("gitlab_finding_list", {
+  description: "Objections recorded for one merge request. Open ones only unless include_resolved is set.",
+  inputSchema: z.object({
+    site_name: siteName,
+    project_id: projectId,
+    mr_iid: mrIid,
+    include_resolved: z.boolean().optional().default(false),
+  }), annotations: readOnly,
+}, ({ site_name, project_id, mr_iid, include_resolved }) => gitlab.listFindings({
+  siteName: site_name, projectId: project_id, mrIid: mr_iid, includeResolved: include_resolved,
+}));
+
+register("gitlab_finding_resolve", {
+  description: "Close objections after confirming the fix. Record the head sha that resolved them so the history stays checkable.",
+  inputSchema: z.object({
+    site_name: siteName,
+    ids: z.array(z.int().positive()).min(1).max(50),
+    head_sha: z.string().trim().regex(/^[0-9a-f]{7,64}$/).optional(),
+  }), annotations: mutate,
+}, ({ site_name, ids, head_sha }) => gitlab.resolveFindings({ siteName: site_name, ids, headSha: head_sha }));
+
 register("gitlab_mr_changes", {
   description: "Fetch one merge request's metadata, diff, and existing discussions. Large diffs are truncated and flagged.",
   inputSchema: z.object({

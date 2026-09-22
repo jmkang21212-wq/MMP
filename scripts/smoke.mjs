@@ -50,7 +50,7 @@ try {
   assert.equal(initialized.result.serverInfo.name, "mmp");
   child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} })}\n`);
   const listed = await request(2, "tools/list");
-  assert.equal(listed.result.tools.length, 32);
+  assert.equal(listed.result.tools.length, 35);
   const storage = await request(3, "tools/call", { name: "storage_info", arguments: {} });
   assert.deepEqual(JSON.parse(storage.result.content[0].text), {
     dataDir,
