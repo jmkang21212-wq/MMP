@@ -1,8 +1,8 @@
 import { UserError, affected, now, requireName } from "./core.js";
 
 const MAX_BODY_LENGTH = 65_536;
-const MAX_DIFF_CHARS = 60_000;
-const MAX_FILE_DIFF_CHARS = 8_000;
+const MAX_DIFF_CHARS = 18_000;
+const MAX_FILE_DIFF_CHARS = 3_000;
 const DEFAULT_ACK_EMOJI = "eyes";
 const EMOJI_PATTERN = /^[a-z0-9][a-z0-9_+-]{0,63}$/;
 const REVIEW_TODO_ACTIONS = ["review_requested", "directly_addressed", "mentioned"];
@@ -277,7 +277,7 @@ export class GitLabService {
           .map((note) => ({
             discussionId: discussion.id,
             author: person(note.author),
-            body: truncate(note.body ?? "", 2_000).text,
+            body: truncate(note.body ?? "", 900).text,
             filePath: note.position?.new_path ?? null,
             line: note.position?.new_line ?? null,
             resolved: Boolean(note.resolved),
