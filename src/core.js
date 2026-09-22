@@ -15,11 +15,11 @@ const REVIEW_TEXT_PATTERN = /(?:리뷰(?:를)?\s*(?:요청|완료|부탁)|검토
 
 export class UserError extends Error {}
 
-function now() {
+export function now() {
   return new Date().toISOString();
 }
 
-function requireName(value, label = "name") {
+export function requireName(value, label = "name") {
   if (value.length > 64 || !NAME_PATTERN.test(value)) {
     throw new UserError(`${label} must start with a Unicode letter or number and contain only letters, numbers, internal spaces, dot, underscore, or hyphen (max 64).`);
   }
@@ -113,7 +113,7 @@ export function renderTemplate(template, variables = {}) {
   return text;
 }
 
-function affected(result, message) {
+export function affected(result, message) {
   if (Number(result.changes) === 0) throw new UserError(message);
 }
 

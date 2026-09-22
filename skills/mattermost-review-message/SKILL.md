@@ -1,6 +1,6 @@
 ---
 name: mattermost-review-message
-description: Use the mmp MCP for natural-language mm/Mattermost channel or DM messages and lightweight webhook, channel, or global-person CRUD. Resolve people safely through saved identity mappings and remember an approved default channel only within the current Codex task.
+description: Use the mmp MCP for natural-language mm/Mattermost channel or DM messages, GitLab review requests assigned to the user, and lightweight webhook, channel, GitLab site, or global-person CRUD. Covers checking for incoming review requests, acknowledging a merge request, reading its diff, posting an approved review comment, and reporting completion. Resolve people safely through saved identity mappings and remember an approved default channel only within the current session.
 ---
 
 # Mattermost Manager
@@ -116,3 +116,27 @@ Map ordinary Korean requests directly to these tools:
 - Delete a logical channel mapping: `channel_delete`.
 
 For channel creation, resolve the logical name and webhook name. `mattermost_channel` is optional; when the user supplies a Mattermost URL containing `/channels/<value>`, use the final path value. Ask only for required missing fields. Do not send a message merely because channel or webhook configuration changed. Verify mutations with the corresponding list tool.
+
+## GitLab Review Workflow
+
+Mattermost incoming webhooks cannot receive messages or add reactions, so an incoming review request is detected and acknowledged on GitLab instead. Run this flow when the user asks to check for review requests, or to review a merge request.
+
+1. `gitlab_review_inbox` lists open merge requests where the stored token's owner is a reviewer. `is_new` marks the first sighting, `changed_since_review` marks a merge request that moved after your last posted note. Report new items with title, author, and `!<iid>`; do not open anything the user did not choose.
+2. `gitlab_mr_ack` puts the `eyes` award emoji on the merge request as the acknowledgement that replaces a Mattermost reaction. It is safe to repeat and reports `already_acknowledged`. Acknowledge only the merge request the user is actually taking on.
+3. `gitlab_mr_changes` returns metadata, the diff, and existing discussions. Check `diff_truncated`; when true, say so instead of reviewing as if the whole diff were read, and narrow to specific files if needed.
+4. Draft the review and show it to the user in full. A merge request comment is visible to everyone with project access and cannot be unsent.
+5. `gitlab_note_create` posts only after the user approves that exact body. Never post a draft, a placeholder, or a body the user has not seen. Pass `file_path` and `line` together for a diff line comment; omit both for a merge request comment. One approval covers one body.
+6. Report the completion to Mattermost with the existing `review-complete` convention through `message_send_dm` or `message_send`, following the Review Messages rules above. Send it only after the GitLab note is posted.
+
+Resolve the merge request author or requester to a Mattermost mention with `participant_list` and `gitlab_username`, exactly as for review requests. If no mapping exists, ask; do not guess.
+
+Never invent a `project_id` or `mr_iid`. Take them from `gitlab_review_inbox`, the current branch's merge request, or an explicit user statement.
+
+## Natural GitLab Site CRUD
+
+- Register a GitLab instance and personal access token: `gitlab_site_create`. The token needs the `api` scope; `read_api` cannot post comments.
+- Show registered instances: `gitlab_site_list`.
+- Replace an expired or rotated token, change the base URL, or rename: `gitlab_site_update`.
+- Delete an instance and its local review tracking: `gitlab_site_delete`.
+
+A GitLab token is secret and is treated exactly like a webhook URL. Never repeat it in chat, never echo it back after registration, and never write it to a file or a commit. If the user pastes a token, register it and refer to it only by site name afterwards. When a tool reports HTTP 401, tell the user the token expired and ask for a new one instead of retrying.

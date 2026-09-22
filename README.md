@@ -13,6 +13,9 @@ Codex와 Claude Code에서 함께 사용하는 로컬 stdio MCP 서버입니다.
 - 한 번의 호출로 여러 채널에 메시지 전송
 - Codex·Claude Code 공용 자연어 리뷰 메시지·웹훅·채널 관리 스킬
 - 리뷰 요청·완료 메시지의 정확한 `@멘션`, 상태 이모지, MR/Jira 한 줄 형식 강제
+- GitLab 인스턴스·Personal Access Token 등록 및 토큰 교체
+- 본인이 리뷰어인 열린 MR 조회, 신규 건 표시, MR 확인 이모지 등록
+- MR diff·기존 논의 조회와 승인된 리뷰 댓글 등록(MR 댓글 및 라인 댓글)
 
 ## 요구 환경
 
@@ -21,6 +24,7 @@ Codex와 Claude Code에서 함께 사용하는 로컬 stdio MCP 서버입니다.
 - Git
 - Codex CLI 또는 Claude Code
 - 메시지를 보낼 Mattermost Incoming Webhook URL
+- GitLab 리뷰 기능을 쓸 경우 `api` 스코프 GitLab Personal Access Token
 
 Windows, macOS, Linux에서 실행할 수 있습니다. 현재 GitHub 저장소는 공개되어 있으며, 저장소가 비공개로 전환된 경우에만 접근 권한과 GitHub 인증이 필요합니다.
 
@@ -390,7 +394,54 @@ DM은 등록된 사람의 Mattermost 사용자명을 목적지로 사용하고, 
 
 처음 사용하는 세션에서는 어떤 논리 채널의 웹훅을 사용할지 묻게 됩니다. 웹훅의 채널 오버라이드가 막혀 있거나 서버 정책상 DM이 허용되지 않으면 Mattermost 오류를 그대로 안내합니다.
 
-### 9. 설정 수정·삭제 예시
+### 9. GitLab 리뷰 처리
+
+Mattermost Incoming Webhook은 메시지를 보내기만 할 수 있어 리뷰 요청 수신이나 이모지 리액션이 불가능합니다. 그래서 리뷰 요청 감지와 확인 표시는 GitLab에서 처리합니다. 실제 이벤트는 "GitLab MR에 리뷰어로 지정됨"이고 Mattermost 메시지는 그 알림이므로, 감지 위치만 옮긴 것입니다.
+
+먼저 GitLab 인스턴스와 Personal Access Token을 등록합니다. 토큰은 `api` 스코프가 필요하며 `read_api`로는 댓글을 등록할 수 없습니다. 토큰은 웹훅 URL과 동일하게 로컬 SQLite에 저장되고 조회 결과에 다시 나오지 않습니다.
+
+```text
+GitLab 인스턴스를 등록해줘. 이름은 "ssafy", 주소는 https://lab.ssafy.com 이고 토큰은 glpat-... 이야.
+```
+
+내게 온 리뷰 요청은 다음처럼 확인합니다. 처음 발견된 MR은 `is_new`로 표시되고, 마지막으로 댓글을 단 이후 변경된 MR은 `changed_since_review`로 표시됩니다.
+
+```text
+나한테 온 리뷰 요청 있어?
+```
+
+리뷰를 맡기로 한 MR에는 확인 표시를 남깁니다. Mattermost 리액션 대신 MR에 `:eyes:` award emoji가 붙고, 요청자와 작성자 모두 GitLab에서 볼 수 있습니다. 여러 번 호출해도 중복되지 않습니다.
+
+```text
+!124 확인했다고 표시해줘.
+```
+
+diff와 기존 논의를 읽고 리뷰 초안을 받습니다. diff가 너무 크면 잘린 사실을 함께 알려줍니다.
+
+```text
+!124 diff 보고 리뷰 초안 잡아줘.
+```
+
+초안을 확인한 뒤에만 GitLab에 등록합니다. MR 댓글은 프로젝트 접근 권한이 있는 모두에게 보이고 되돌릴 수 없으므로, 승인한 본문 그대로만 게시합니다.
+
+```text
+방금 초안 그대로 !124에 댓글로 올려줘.
+src/auth.js 42번째 줄에 "null 체크가 필요합니다."로 라인 댓글 달아줘.
+```
+
+게시가 끝나면 기존 `review-complete` 컨벤션으로 Mattermost에 회신합니다.
+
+```text
+MR !124 리뷰 완료 성용이형한테 DM으로 보내줘.
+```
+
+토큰이 만료되면 HTTP 401을 그대로 안내합니다. 새로 발급한 뒤 교체하세요.
+
+```text
+"ssafy" GitLab 토큰을 새로 발급한 걸로 교체해줘.
+```
+
+### 10. 설정 수정·삭제 예시
 
 ```text
 "백엔드-팀" 채널 이름을 "특화-팀-BND"로 변경해줘.
@@ -401,7 +452,7 @@ DM은 등록된 사람의 Mattermost 사용자명을 목적지로 사용하고, 
 
 연결된 논리 채널이 남아 있는 웹훅은 실수로 삭제되지 않습니다. 먼저 해당 채널을 다른 웹훅으로 옮기거나 삭제해야 합니다.
 
-### 10. 최초 설정 완료 체크리스트
+### 11. 최초 설정 완료 체크리스트
 
 - [ ] Incoming Webhook을 발급하고 비밀 URL을 안전하게 보관했다.
 - [ ] MMP의 `webhook_list`에서 웹훅 이름이 조회된다.
@@ -455,6 +506,8 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 | 컨벤션 | `convention_create`, `convention_list`, `convention_update`, `convention_delete` |
 | 메시지 | `message_preview`, `message_send`, `message_send_dm` |
 | 진단 | `storage_info` |
+| GitLab 인스턴스 | `gitlab_site_create`, `gitlab_site_list`, `gitlab_site_update`, `gitlab_site_delete` |
+| GitLab 리뷰 | `gitlab_review_inbox`, `gitlab_mr_changes`, `gitlab_mr_ack`, `gitlab_note_create` |
 
 `channel_create`의 `mattermost_channel`을 생략하면 웹훅 생성 시 지정한 기본 채널로 전송합니다. 값을 주면 Mattermost 채널명 또는 `@username`으로 대상을 오버라이드합니다.
 
@@ -480,6 +533,9 @@ Windows의 기존 `%LOCALAPPDATA%\mattermost-manager-mcp\mattermost.sqlite3`에 
 - 전송은 저장된 웹훅만 사용하고 HTTP 리다이렉트를 따르지 않습니다.
 - 연결된 채널이 있는 웹훅은 삭제되지 않습니다.
 - 웹훅 URL이 노출되면 Mattermost에서 재발급하고 저장된 URL을 교체하세요.
+- GitLab Personal Access Token도 웹훅 URL과 동일하게 취급합니다. 조회 결과에 반환하지 않고, 로컬 SQLite에 암호화 없이 저장되며, 커밋하거나 채팅 로그에 남기지 마세요.
+- GitLab 토큰은 `api` 스코프가 필요하며 만료 기간을 짧게 잡는 것을 권장합니다. 노출되면 GitLab에서 즉시 폐기하고 `gitlab_site_update`로 교체하세요.
+- `gitlab_note_create`는 프로젝트 접근 권한이 있는 모두에게 보이는 댓글을 등록하며 되돌릴 수 없습니다. 사용자가 승인한 본문만 게시합니다.
 
 ## 제거
 

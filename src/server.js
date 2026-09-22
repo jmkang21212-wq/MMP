@@ -2,8 +2,10 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
 import { MattermostService, UserError } from "./core.js";
+import { GitLabService } from "./gitlab.js";
 
 const service = new MattermostService();
+const gitlab = new GitLabService({ db: service.db });
 const server = new McpServer({ name: "mmp", version: "0.2.5" });
 
 const name = z.string().trim().min(1).max(64).regex(/^[\p{L}\p{N}](?:[\p{L}\p{N} ._-]*[\p{L}\p{N}._-])?$/u);
@@ -23,6 +25,12 @@ function messageFor(error) {
   if (String(error?.message).includes("UNIQUE constraint failed")) return "An item with that name already exists.";
   return "The Mattermost manager could not complete the request.";
 }
+
+const projectId = z.union([z.int().positive(), z.string().trim().min(1).max(512)]);
+const mrIid = z.int().positive();
+const siteName = name.optional();
+const network = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+const networkRead = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 
 function register(name, config, handler) {
   server.registerTool(name, config, async (args) => {
@@ -234,6 +242,77 @@ register("message_send_dm", {
   conventionName: convention_name,
   variables,
   text,
+}));
+
+register("gitlab_site_create", {
+  description: "Register a GitLab instance and its personal access token (api scope). The token is stored locally and never returned by read tools.",
+  inputSchema: z.object({ name, base_url: z.url().max(2048), token: z.string().min(20).max(256) }), annotations: mutate,
+}, ({ name, base_url, token }) => gitlab.createSite({ name, baseUrl: base_url, token }));
+
+register("gitlab_site_list", {
+  description: "List registered GitLab instances. Tokens are never returned.",
+  inputSchema: z.object({ name: name.optional() }), annotations: readOnly,
+}, (args) => gitlab.listSites(args));
+
+register("gitlab_site_update", {
+  description: "Rename a GitLab instance, change its base URL, or replace an expired personal access token.",
+  inputSchema: z.object({
+    name,
+    new_name: name.optional(),
+    base_url: z.url().max(2048).optional(),
+    token: z.string().min(20).max(256).optional(),
+  }).refine((value) => Object.keys(value).some((key) => key !== "name"), "Provide new_name, base_url, or token."),
+  annotations: mutate,
+}, ({ name, new_name, base_url, token }) => gitlab.updateSite({ name, newName: new_name, baseUrl: base_url, token }));
+
+register("gitlab_site_delete", {
+  description: "Delete a registered GitLab instance and its local review tracking state.",
+  inputSchema: z.object({ name }), annotations: remove,
+}, (args) => gitlab.deleteSite(args));
+
+register("gitlab_review_inbox", {
+  description: "List open merge requests where the token owner is a reviewer. Marks each as new on first sight and reports whether it changed since the last review note.",
+  inputSchema: z.object({ site_name: siteName, limit: z.int().min(1).max(100).optional().default(20) }),
+  annotations: network,
+}, ({ site_name, limit }) => gitlab.reviewInbox({ siteName: site_name, limit }));
+
+register("gitlab_mr_changes", {
+  description: "Fetch one merge request's metadata, diff, and existing discussions. Large diffs are truncated and flagged.",
+  inputSchema: z.object({
+    site_name: siteName,
+    project_id: projectId,
+    mr_iid: mrIid,
+    include_discussions: z.boolean().optional().default(true),
+  }), annotations: networkRead,
+}, ({ site_name, project_id, mr_iid, include_discussions }) => gitlab.mergeRequestChanges({
+  siteName: site_name, projectId: project_id, mrIid: mr_iid, includeDiscussions: include_discussions,
+}));
+
+register("gitlab_mr_ack", {
+  description: "Add an award emoji to a merge request as the token owner, signalling the review was picked up. Safe to repeat.",
+  inputSchema: z.object({
+    site_name: siteName,
+    project_id: projectId,
+    mr_iid: mrIid,
+    emoji: z.string().trim().min(1).max(64).optional().default("eyes"),
+  }), annotations: network,
+}, ({ site_name, project_id, mr_iid, emoji }) => gitlab.acknowledgeMergeRequest({
+  siteName: site_name, projectId: project_id, mrIid: mr_iid, emoji,
+}));
+
+register("gitlab_note_create", {
+  description: "Post a review comment on a merge request, visible to everyone with project access. Provide file_path and line together for a diff line comment. Only call this after the user approves the exact body.",
+  inputSchema: z.object({
+    site_name: siteName,
+    project_id: projectId,
+    mr_iid: mrIid,
+    body: z.string().min(1).max(65_536),
+    file_path: z.string().trim().min(1).max(1024).optional(),
+    line: z.int().positive().optional(),
+  }).refine((value) => (value.file_path === undefined) === (value.line === undefined), "Provide both file_path and line, or neither."),
+  annotations: network,
+}, ({ site_name, project_id, mr_iid, body, file_path, line }) => gitlab.createNote({
+  siteName: site_name, projectId: project_id, mrIid: mr_iid, body, filePath: file_path, line,
 }));
 
 process.once("SIGINT", () => { service.close(); process.exit(0); });
