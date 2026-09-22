@@ -410,6 +410,14 @@ GitLab 인스턴스를 등록해줘. 이름은 "ssafy", 주소는 https://lab.ss
 나한테 온 리뷰 요청 있어?
 ```
 
+이 조회는 두 곳을 함께 봅니다. `gitlab_review_inbox`는 리뷰어로 지정된 MR을, `gitlab_todo_inbox`는 GitLab todo를 읽어 **MR 본문이나 댓글에서 `@멘션`된 경우**까지 잡습니다. 둘은 서로를 대체하지 못합니다. 리뷰어로 지정돼도 해당 todo가 이미 정리되면 todo에는 안 나오고, 반대로 댓글 멘션은 리뷰어 목록에 안 나옵니다.
+
+todo는 MR이 머지된 뒤에도 pending으로 남는 경우가 있어 기본적으로 열린 MR만 보여줍니다. 처리 끝난 건은 `gitlab_todo_done`으로 정리합니다.
+
+```text
+!170 처리 끝났으니 todo 정리해줘
+```
+
 리뷰를 맡기로 한 MR에는 확인 표시를 남깁니다. Mattermost 리액션 대신 MR에 `:eyes:` award emoji가 붙고, 요청자와 작성자 모두 GitLab에서 볼 수 있습니다. 여러 번 호출해도 중복되지 않습니다.
 
 ```text
@@ -441,7 +449,41 @@ MR !124 리뷰 완료 성용이형한테 DM으로 보내줘.
 "ssafy" GitLab 토큰을 새로 발급한 걸로 교체해줘.
 ```
 
-### 10. 설정 수정·삭제 예시
+### 10. 리뷰 요청 자동 감지
+
+Claude Code 세션을 열어두는 동안 주기적으로 확인하려면 `/loop`를 씁니다.
+
+```text
+/loop 5m 나한테 온 리뷰 요청 확인해서, 새 건 있으면 확인 표시하고 diff 읽고 리뷰 초안까지 잡아줘. 댓글은 올리지 말고 보여주기만 해.
+```
+
+세션을 열어두지 않아도 알림을 받으려면 백그라운드 감시 프로세스를 띄웁니다. 새 MR이 감지되면 본인에게 Mattermost DM을 보냅니다.
+
+```powershell
+npm run watch:reviews
+```
+
+옵션은 다음과 같습니다.
+
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `--interval <초>` | `300` | 폴링 주기. 최소 30초 |
+| `--site <이름>` | 등록된 사이트가 하나면 자동 | GitLab 인스턴스 |
+| `--via <채널>` | 활성 채널이 하나면 자동 | DM에 쓸 웹훅을 가진 논리 채널 |
+| `--once` | | 한 번만 확인하고 종료 |
+| `--dry-run` | | 전송하지 않고 보낼 내용만 출력 |
+
+처음에는 `--once --dry-run`으로 확인하는 것을 권장합니다.
+
+```powershell
+node scripts/review-watcher.mjs --once --dry-run
+```
+
+알림은 MR당 한 번만 갑니다. 알림 여부는 리뷰 상태와 별도로 기록되므로, 감시 프로세스가 먼저 확인해도 세션에서 `is_new`는 그대로 유지됩니다.
+
+감시 프로세스는 감지와 알림만 합니다. 확인 이모지, diff 조회, 리뷰 작성, 댓글 게시는 하지 않습니다. 알림을 받으면 세션에서 이어서 진행하세요.
+
+### 11. 설정 수정·삭제 예시
 
 ```text
 "백엔드-팀" 채널 이름을 "특화-팀-BND"로 변경해줘.
@@ -452,7 +494,7 @@ MR !124 리뷰 완료 성용이형한테 DM으로 보내줘.
 
 연결된 논리 채널이 남아 있는 웹훅은 실수로 삭제되지 않습니다. 먼저 해당 채널을 다른 웹훅으로 옮기거나 삭제해야 합니다.
 
-### 11. 최초 설정 완료 체크리스트
+### 12. 최초 설정 완료 체크리스트
 
 - [ ] Incoming Webhook을 발급하고 비밀 URL을 안전하게 보관했다.
 - [ ] MMP의 `webhook_list`에서 웹훅 이름이 조회된다.
@@ -507,7 +549,7 @@ Incoming Webhook만으로는 Mattermost 서버의 실제 채널 참여자를 조
 | 메시지 | `message_preview`, `message_send`, `message_send_dm` |
 | 진단 | `storage_info` |
 | GitLab 인스턴스 | `gitlab_site_create`, `gitlab_site_list`, `gitlab_site_update`, `gitlab_site_delete` |
-| GitLab 리뷰 | `gitlab_review_inbox`, `gitlab_mr_changes`, `gitlab_mr_ack`, `gitlab_note_create` |
+| GitLab 리뷰 | `gitlab_review_inbox`, `gitlab_todo_inbox`, `gitlab_todo_done`, `gitlab_mr_changes`, `gitlab_mr_ack`, `gitlab_note_create` |
 
 `channel_create`의 `mattermost_channel`을 생략하면 웹훅 생성 시 지정한 기본 채널로 전송합니다. 값을 주면 Mattermost 채널명 또는 `@username`으로 대상을 오버라이드합니다.
 

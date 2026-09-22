@@ -5,6 +5,7 @@ const MAX_DIFF_CHARS = 60_000;
 const MAX_FILE_DIFF_CHARS = 8_000;
 const DEFAULT_ACK_EMOJI = "eyes";
 const EMOJI_PATTERN = /^[a-z0-9][a-z0-9_+-]{0,63}$/;
+const REVIEW_TODO_ACTIONS = ["review_requested", "directly_addressed", "mentioned"];
 
 function validateBaseUrl(value, allowHttp) {
   let url;
@@ -92,6 +93,10 @@ export class GitLabService {
         PRIMARY KEY (site_id, project_id, mr_iid)
       );
     `);
+    const columns = this.db.prepare("PRAGMA table_info(gitlab_review_state)").all();
+    if (!columns.some((column) => column.name === "notified_at")) {
+      this.db.exec("ALTER TABLE gitlab_review_state ADD COLUMN notified_at TEXT");
+    }
   }
 
   createSite({ name, baseUrl, token }) {
@@ -138,7 +143,7 @@ export class GitLabService {
     return { deleted: name };
   }
 
-  async reviewInbox({ siteName, limit = 20 }) {
+  async reviewInbox({ siteName, limit = 20, track = true }) {
     const site = this.#requireSite(siteName);
     const me = await this.#request(site, "user");
     const merged = await this.#request(
@@ -146,25 +151,9 @@ export class GitLabService {
       `merge_requests?scope=all&state=opened&reviewer_id=${Number(me.id)}&order_by=updated_at&sort=desc&per_page=${limit}`,
     );
     const rows = Array.isArray(merged) ? merged : [];
-    const select = this.db.prepare("SELECT first_seen_at, last_updated_at, acked_at, reviewed_at FROM gitlab_review_state WHERE site_id = ? AND project_id = ? AND mr_iid = ?");
-    const insert = this.db.prepare("INSERT INTO gitlab_review_state(site_id, project_id, mr_iid, first_seen_at, last_updated_at) VALUES (?, ?, ?, ?, ?)");
-    const touch = this.db.prepare("UPDATE gitlab_review_state SET last_updated_at = ? WHERE site_id = ? AND project_id = ? AND mr_iid = ?");
-    const timestamp = now();
     const items = rows.map((mr) => {
       const summary = summarizeMergeRequest(mr);
-      const state = select.get(site.id, summary.projectId, summary.mrIid);
-      if (!state) {
-        insert.run(site.id, summary.projectId, summary.mrIid, timestamp, summary.updatedAt ?? null);
-      } else {
-        touch.run(summary.updatedAt ?? null, site.id, summary.projectId, summary.mrIid);
-      }
-      return {
-        ...summary,
-        isNew: !state,
-        acked: Boolean(state?.acked_at),
-        reviewedAt: state?.reviewed_at ?? null,
-        changedSinceReview: Boolean(state?.reviewed_at && summary.updatedAt && summary.updatedAt > state.reviewed_at),
-      };
+      return { ...summary, ...this.#trackState(site.id, summary, { write: track }) };
     });
     return {
       site: site.name,
@@ -173,6 +162,80 @@ export class GitLabService {
       newCount: items.filter((item) => item.isNew).length,
       mergeRequests: items,
     };
+  }
+
+  async todoInbox({ siteName, limit = 50, actions, includeClosed = false, track = true }) {
+    const site = this.#requireSite(siteName);
+    const allowed = new Set(actions?.length ? actions : REVIEW_TODO_ACTIONS);
+    const rows = await this.#request(site, `todos?state=pending&per_page=${limit}`);
+    const grouped = new Map();
+    for (const todo of Array.isArray(rows) ? rows : []) {
+      if (todo.target_type !== "MergeRequest" || !allowed.has(todo.action_name)) continue;
+      const projectId = Number(todo.project?.id);
+      const mrIid = Number(todo.target?.iid);
+      if (!Number.isInteger(projectId) || !Number.isInteger(mrIid)) continue;
+      const state = todo.target?.state ?? null;
+      if (!includeClosed && state !== "opened") continue;
+      const key = `${projectId}:${mrIid}`;
+      const entry = grouped.get(key) ?? {
+        projectId,
+        mrIid,
+        reference: `!${mrIid}`,
+        title: todo.target?.title ?? null,
+        author: person(todo.target?.author),
+        state,
+        webUrl: todo.target?.web_url ?? null,
+        updatedAt: todo.target?.updated_at ?? null,
+        projectPath: todo.project?.path_with_namespace ?? null,
+        reasons: [],
+        todoIds: [],
+        triggeredBy: [],
+      };
+      if (!entry.reasons.includes(todo.action_name)) entry.reasons.push(todo.action_name);
+      entry.todoIds.push(Number(todo.id));
+      const by = person(todo.author);
+      if (by?.username && !entry.triggeredBy.some((one) => one.username === by.username)) entry.triggeredBy.push(by);
+      grouped.set(key, entry);
+    }
+    const items = [...grouped.values()].map((entry) => ({ ...entry, ...this.#trackState(site.id, entry, { write: track }) }));
+    return {
+      site: site.name,
+      actions: [...allowed],
+      count: items.length,
+      newCount: items.filter((item) => item.isNew).length,
+      mergeRequests: items,
+    };
+  }
+
+  markNotified({ siteName, mergeRequests }) {
+    const site = this.#requireSite(siteName);
+    const timestamp = now();
+    const update = this.db.prepare("UPDATE gitlab_review_state SET notified_at = ? WHERE site_id = ? AND project_id = ? AND mr_iid = ?");
+    const insert = this.db.prepare("INSERT INTO gitlab_review_state(site_id, project_id, mr_iid, first_seen_at, last_updated_at, notified_at) VALUES (?, ?, ?, ?, ?, ?)");
+    let marked = 0;
+    for (const entry of mergeRequests) {
+      const changed = update.run(timestamp, site.id, entry.projectId, entry.mrIid);
+      if (Number(changed.changes) === 0) {
+        insert.run(site.id, entry.projectId, entry.mrIid, timestamp, entry.updatedAt ?? null, timestamp);
+      }
+      marked += 1;
+    }
+    return { ok: true, site: site.name, marked };
+  }
+
+  async markTodoDone({ siteName, todoId }) {
+    const site = this.#requireSite(siteName);
+    const id = Number(todoId);
+    if (!Number.isInteger(id) || id <= 0) throw new UserError("todo_id must be a positive integer.");
+    try {
+      await this.#request(site, `todos/${id}/mark_as_done`, { method: "POST" });
+    } catch (error) {
+      if (error instanceof UserError && error.message.includes("404")) {
+        return { ok: true, site: site.name, todoId: id, alreadyDone: true };
+      }
+      throw error;
+    }
+    return { ok: true, site: site.name, todoId: id, alreadyDone: false };
   }
 
   async mergeRequestChanges({ siteName, projectId, mrIid, includeDiscussions = true }) {
@@ -308,6 +371,25 @@ export class GitLabService {
     const site = this.#site(name);
     if (!site) throw new UserError(`GitLab site '${name}' does not exist.`);
     return site;
+  }
+
+  #trackState(siteId, summary, { write = true } = {}) {
+    const state = this.db.prepare("SELECT first_seen_at, last_updated_at, acked_at, reviewed_at, notified_at FROM gitlab_review_state WHERE site_id = ? AND project_id = ? AND mr_iid = ?")
+      .get(siteId, summary.projectId, summary.mrIid);
+    if (write && !state) {
+      this.db.prepare("INSERT INTO gitlab_review_state(site_id, project_id, mr_iid, first_seen_at, last_updated_at) VALUES (?, ?, ?, ?, ?)")
+        .run(siteId, summary.projectId, summary.mrIid, now(), summary.updatedAt ?? null);
+    } else if (write) {
+      this.db.prepare("UPDATE gitlab_review_state SET last_updated_at = ? WHERE site_id = ? AND project_id = ? AND mr_iid = ?")
+        .run(summary.updatedAt ?? null, siteId, summary.projectId, summary.mrIid);
+    }
+    return {
+      isNew: !state,
+      acked: Boolean(state?.acked_at),
+      reviewedAt: state?.reviewed_at ?? null,
+      notified: Boolean(state?.notified_at),
+      changedSinceReview: Boolean(state?.reviewed_at && summary.updatedAt && summary.updatedAt > state.reviewed_at),
+    };
   }
 
   #markState(siteId, project, iid, column) {

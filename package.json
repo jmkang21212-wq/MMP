@@ -11,7 +11,8 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "watch:reviews": "node scripts/review-watcher.mjs"
   },
   "engines": {
     "node": ">=22.13.0"

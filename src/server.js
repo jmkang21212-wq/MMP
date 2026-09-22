@@ -276,6 +276,23 @@ register("gitlab_review_inbox", {
   annotations: network,
 }, ({ site_name, limit }) => gitlab.reviewInbox({ siteName: site_name, limit }));
 
+register("gitlab_todo_inbox", {
+  description: "List pending GitLab todos on merge requests: review requests, @mentions in a description, and @mentions in comments. Groups several todos on the same merge request and marks each as new on first sight. Closed and merged merge requests are excluded unless include_closed is set.",
+  inputSchema: z.object({
+    site_name: siteName,
+    limit: z.int().min(1).max(100).optional().default(50),
+    actions: z.array(z.enum(["review_requested", "directly_addressed", "mentioned", "assigned", "marked", "build_failed", "approval_required", "unmergeable"])).min(1).optional(),
+    include_closed: z.boolean().optional().default(false),
+  }), annotations: network,
+}, ({ site_name, limit, actions, include_closed }) => gitlab.todoInbox({
+  siteName: site_name, limit, actions, includeClosed: include_closed,
+}));
+
+register("gitlab_todo_done", {
+  description: "Mark one GitLab todo as done so it stops appearing in the inbox. Use the todo ids returned by gitlab_todo_inbox after the merge request is handled.",
+  inputSchema: z.object({ site_name: siteName, todo_id: z.int().positive() }), annotations: network,
+}, ({ site_name, todo_id }) => gitlab.markTodoDone({ siteName: site_name, todoId: todo_id }));
+
 register("gitlab_mr_changes", {
   description: "Fetch one merge request's metadata, diff, and existing discussions. Large diffs are truncated and flagged.",
   inputSchema: z.object({
