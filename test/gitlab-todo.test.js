@@ -138,3 +138,44 @@ test("watcher notification text survives the free-text review guard", async () =
     rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test("review queue merges todos and reviewer assignment, which do not cover each other", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "mmp-queue-test-"));
+  const mattermost = new MattermostService({ dataDir, allowHttp: true });
+  const respond = (payload) => ({ ok: true, status: 200, text: async () => JSON.stringify(payload) });
+  const fetchImpl = async (url) => {
+    const path = new URL(url).pathname.replace("/api/v4/", "");
+    if (path === "user") return respond({ id: 7, username: "jmkang21212", name: "강재민" });
+    // !175 is only a todo: mentioned in a comment, never assigned as reviewer.
+    if (path === "todos") return respond([todo(801, "directly_addressed", 175)]);
+    // !170 is only a reviewer assignment: its todo was cleared long ago.
+    if (path === "merge_requests") {
+      return respond([
+        { id: 1, iid: 170, project_id: 42, title: "MR 170", author: { username: "tmdtkr", name: "백승학" }, web_url: "u170", updated_at: "2026-09-22T00:00:00Z" },
+        { id: 2, iid: 175, project_id: 42, title: "MR 175", author: { username: "dndwlqor", name: "백지웅" }, web_url: "u175", updated_at: "2026-09-22T00:00:00Z" },
+      ]);
+    }
+    return { ok: false, status: 404, text: async () => "{}" };
+  };
+  const gitlab = new GitLabService({ db: mattermost.db, fetchImpl });
+
+  try {
+    gitlab.createSite({ name: "ssafy", baseUrl: "https://gitlab.test", token: TOKEN });
+    const queue = await gitlab.reviewQueue({});
+    assert.equal(queue.count, 2, "neither source alone sees both merge requests");
+
+    const byIid = new Map(queue.mergeRequests.map((item) => [item.mrIid, item]));
+    assert.deepEqual(byIid.get(170).reasons, ["review_requested"], "reviewer-only MR is not dropped for lacking a todo");
+    assert.deepEqual(byIid.get(175).reasons, ["directly_addressed", "review_requested"], "one MR in both sources keeps both reasons");
+    assert.deepEqual(byIid.get(175).todoIds, [801], "todo ids survive the merge so they can be cleared later");
+    assert.equal(byIid.get(170).todoIds.length, 0);
+    assert.equal(queue.reviewer.username, "jmkang21212");
+    assert.equal(queue.newCount, 2);
+
+    const second = await gitlab.reviewQueue({});
+    assert.equal(second.newCount, 0, "a second pass reports nothing new");
+  } finally {
+    mattermost.close();
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});

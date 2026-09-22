@@ -207,6 +207,38 @@ export class GitLabService {
     };
   }
 
+  // Todos and reviewer assignment do not cover each other: a todo appears for an
+  // @mention but is cleared once read, and a reviewer assignment never creates a
+  // new one after its todo is done. Callers that want everything waiting on the
+  // token owner need both, merged by merge request.
+  async reviewQueue({ siteName, limit, track = true }) {
+    const [todos, assigned] = await Promise.all([
+      this.todoInbox({ siteName, limit, track }),
+      this.reviewInbox({ siteName, track }),
+    ]);
+    const merged = new Map();
+    for (const item of todos.mergeRequests) {
+      merged.set(`${item.projectId}:${item.mrIid}`, { ...item });
+    }
+    for (const item of assigned.mergeRequests) {
+      const key = `${item.projectId}:${item.mrIid}`;
+      const existing = merged.get(key);
+      if (existing) {
+        if (!existing.reasons.includes("review_requested")) existing.reasons.push("review_requested");
+      } else {
+        merged.set(key, { ...item, reasons: ["review_requested"], todoIds: [] });
+      }
+    }
+    const items = [...merged.values()];
+    return {
+      site: todos.site,
+      reviewer: assigned.reviewer,
+      count: items.length,
+      newCount: items.filter((item) => item.isNew).length,
+      mergeRequests: items,
+    };
+  }
+
   markNotified({ siteName, mergeRequests }) {
     const site = this.#requireSite(siteName);
     const timestamp = now();

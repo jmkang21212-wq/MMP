@@ -72,30 +72,8 @@ function notificationText(items) {
   return `:eyes: 리뷰 대기 ${items.length}건\n\n${lines.join("\n\n")}`;
 }
 
-// Todos and reviewer assignment do not cover each other: a todo appears for an
-// @mention but is cleared once read, and a reviewer assignment never creates one
-// after its todo is done. Both sources are queried and merged by merge request.
-async function collect(siteName) {
-  const [todos, assigned] = await Promise.all([
-    gitlab.todoInbox({ siteName, track: false }),
-    gitlab.reviewInbox({ siteName, track: false }),
-  ]);
-  const merged = new Map();
-  for (const item of todos.mergeRequests) merged.set(`${item.projectId}:${item.mrIid}`, { ...item });
-  for (const item of assigned.mergeRequests) {
-    const key = `${item.projectId}:${item.mrIid}`;
-    const existing = merged.get(key);
-    if (existing) {
-      if (!existing.reasons.includes("review_requested")) existing.reasons.push("review_requested");
-    } else {
-      merged.set(key, { ...item, reasons: ["review_requested"], todoIds: [] });
-    }
-  }
-  return [...merged.values()];
-}
-
 async function tick(siteName, viaChannel, self) {
-  const items = await collect(siteName);
+  const items = (await gitlab.reviewQueue({ siteName, track: false })).mergeRequests;
   const pending = items.filter((item) => !item.notified);
   if (!pending.length) {
     log(`no new merge requests (${items.length} open, all already notified)`);
