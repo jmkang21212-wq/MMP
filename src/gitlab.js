@@ -63,6 +63,7 @@ function summarizeMergeRequest(mr) {
     draft: Boolean(mr.draft ?? mr.work_in_progress),
     webUrl: mr.web_url,
     updatedAt: mr.updated_at,
+    headSha: mr.sha ?? null,
   };
 }
 
@@ -162,6 +163,26 @@ export class GitLabService {
       newCount: items.filter((item) => item.isNew).length,
       mergeRequests: items,
     };
+  }
+
+  // Every merge request open in one project, regardless of who reviews it. Checking
+  // one branch against the others needs all of them: reviewInbox only sees the ones
+  // the token owner reviews, and two merge requests can break each other without
+  // either author being a reviewer of the other. Cross-project pairs never merge
+  // together, so the project is required rather than optional.
+  async listOpenMergeRequests({ siteName, projectId, limit = 50 }) {
+    const site = this.#requireSite(siteName);
+    const project = projectPath(projectId);
+    const size = Number(limit);
+    if (!Number.isInteger(size) || size < 1 || size > 100) {
+      throw new UserError("limit must be an integer between 1 and 100.");
+    }
+    const rows = await this.#request(
+      site,
+      `projects/${project}/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=${size}`,
+    );
+    const items = (Array.isArray(rows) ? rows : []).map(summarizeMergeRequest);
+    return { site: site.name, count: items.length, mergeRequests: items };
   }
 
   async todoInbox({ siteName, limit = 50, actions, includeClosed = false, track = true }) {
