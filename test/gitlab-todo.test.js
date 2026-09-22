@@ -179,3 +179,45 @@ test("review queue merges todos and reviewer assignment, which do not cover each
     rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test("a todo that arrives after the notification reopens the merge request", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "mmp-todo-renotify-"));
+  const mattermost = new MattermostService({ dataDir, allowHttp: true });
+  let pending = [todo(901, "review_requested", 301)];
+  const fetchImpl = async (url) => {
+    const path = new URL(url).pathname.replace("/api/v4/", "");
+    const payload = path === "todos" ? pending : { message: `unexpected ${path}` };
+    return { ok: path === "todos", status: path === "todos" ? 200 : 404, text: async () => JSON.stringify(payload) };
+  };
+
+  try {
+    const gitlab = new GitLabService({ db: mattermost.db, fetchImpl });
+    gitlab.createSite({ name: "ssafy", baseUrl: "https://gitlab.test", token: TOKEN });
+    const poll = () => gitlab.todoInbox({ siteName: "ssafy", track: false });
+    const only = (inbox) => inbox.mergeRequests.find((item) => item.mrIid === 301);
+
+    const first = only(await poll());
+    assert.equal(first.notified, false);
+    assert.deepEqual(first.newTodoIds, [901]);
+    const marked = gitlab.markNotified({ siteName: "ssafy", mergeRequests: [first] });
+    assert.equal(marked.markedTodos, 1);
+
+    const quiet = only(await poll());
+    assert.equal(quiet.notified, true, "the same todo does not notify twice");
+    assert.deepEqual(quiet.newTodoIds, []);
+
+    // A comment or description mention on the same merge request arrives as a
+    // new todo id, which the merge-request-level flag alone would swallow.
+    pending = [todo(901, "review_requested", 301), todo(902, "directly_addressed", 301)];
+    const reopened = only(await poll());
+    assert.equal(reopened.notified, false, "a new todo on a notified MR notifies again");
+    assert.deepEqual(reopened.newTodoIds, [902]);
+    assert.deepEqual(reopened.reasons, ["review_requested", "directly_addressed"]);
+
+    assert.equal(gitlab.markNotified({ siteName: "ssafy", mergeRequests: [reopened] }).markedTodos, 1);
+    assert.equal(only(await poll()).notified, true);
+  } finally {
+    mattermost.close();
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
