@@ -7,6 +7,7 @@ import {
   duplicateKeys,
   duplicateRequirements,
   duplicateVersions,
+  staleConflicts,
 } from "../src/merge-inspection.js";
 
 // One merge request checked against every other one open in the same project.
@@ -57,6 +58,19 @@ function git(args, { allowFailure = false } = {}) {
     if (allowFailure && typeof error.stdout === "string") return error.stdout;
     throw new UserError(`git ${args[0]} failed: ${String(error.stderr ?? error.message).trim().split("\n")[0]}`);
   }
+}
+
+// The same merge, run against the merge request's own target branch. A path that
+// conflicts there too is that branch being behind, not these two colliding.
+function conflictsWithTarget(item) {
+  if (!item.targetBranch) return [];
+  const head = git(["rev-parse", "--verify", "--quiet", `origin/${item.targetBranch}`], {
+    allowFailure: true,
+  }).trim();
+  if (!/^[0-9a-f]{40}$/.test(head)) return [];
+  return conflictPaths(git(["merge-tree", "--write-tree", "--name-only", head, item.headSha], {
+    allowFailure: true,
+  }));
 }
 
 function present(sha) {
@@ -126,7 +140,10 @@ async function run(gitlab) {
 
   if (!values["no-fetch"]) {
     // Remote-tracking refs only. No branch, index, or working tree is touched.
-    git(["fetch", "--quiet", "origin", ...[mine, ...others].map((item) => item.sourceBranch)], {
+    const branches = new Set([mine, ...others]
+      .flatMap((item) => [item.sourceBranch, item.targetBranch])
+      .filter(Boolean));
+    git(["fetch", "--quiet", "origin", ...branches], {
       allowFailure: true,
     });
   }
@@ -145,9 +162,15 @@ async function run(gitlab) {
       allowFailure: true,
     });
     const tree = output.split("\n")[0].trim();
-    const conflicted = new Set(conflictPaths(output));
-    for (const path of conflicted) {
-      findings.push(`[conflict] !${other.mrIid} ${path}`);
+    const pairwise = conflictPaths(output);
+    const conflicted = new Set(pairwise);
+    // Attribute before reporting. Blaming this merge request for a branch that
+    // is simply behind puts the same lines on every review and wastes the reader.
+    const behind = new Set(pairwise.length ? staleConflicts(pairwise, conflictsWithTarget(other)) : []);
+    for (const path of pairwise) {
+      findings.push(behind.has(path)
+        ? `[behind]   !${other.mrIid} ${path} (also conflicts with ${other.targetBranch})`
+        : `[conflict] !${other.mrIid} ${path}`);
     }
     if (!/^[0-9a-f]{40}$/.test(tree)) continue;
     for (const note of inspect(tree, conflicted)) {

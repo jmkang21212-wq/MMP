@@ -100,3 +100,16 @@ export function duplicateRequirements(text) {
   }
   return [...twice];
 }
+/**
+ * Which of a pair's conflicting paths are really the other branch being behind.
+ *
+ * merge-tree(A, B) uses their merge base, so a change that reached A from the
+ * target branch counts as A's side. If B is old enough, every merge request cut
+ * after that change conflicts with B on the same paths, and calling that a
+ * collision between A and B blames the wrong branch. Re-running the merge
+ * against the target branch separates the two.
+ */
+export function staleConflicts(pairwise, againstTarget) {
+  const behind = new Set(againstTarget);
+  return pairwise.filter((path) => behind.has(path));
+}

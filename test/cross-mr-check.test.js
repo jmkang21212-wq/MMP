@@ -10,6 +10,7 @@ import {
   duplicateKeys,
   duplicateRequirements,
   duplicateVersions,
+  staleConflicts,
 } from "../src/merge-inspection.js";
 
 const TOKEN = "glpat-0123456789abcdefghij";
@@ -188,4 +189,24 @@ test("VCS and URL lines are only duplicates when they name the same project", ()
 test("a hash continuation does not hide the package on the following line", () => {
   const text = "pkg==1.0 \\n    --hash=sha256:aaa\nother==2.0\npkg==3.0\n";
   assert.deepEqual(duplicateRequirements(text), ["pkg"]);
+});
+
+test("a branch that is behind the target is not a collision with this one", () => {
+  // The real case: !199 and !200 are unrelated (deploy config vs notifications)
+  // and neither touches these files, yet both 'conflict' with !192 on them.
+  // develop changed them in 6a3110e1; !192 predates it. The collision is
+  // !192 vs develop, and naming this merge request as the other side is wrong.
+  const pairwise = ["docs/data/README.md", "libs/astro-kernel/README.md"];
+  assert.deepEqual(staleConflicts(pairwise, pairwise), pairwise, "all of it is the branch being behind");
+
+  // A genuine collision: only this pair conflicts, the target branch merges clean.
+  assert.deepEqual(staleConflicts(["apps/backend/src/main/resources/application.properties"], []), []);
+
+  // Mixed. Only the shared one is reattributed.
+  assert.deepEqual(
+    staleConflicts(["a.md", "b.md", "c.md"], ["b.md", "z.md"]),
+    ["b.md"],
+    "a path the target does not conflict on stays this pair's problem",
+  );
+  assert.deepEqual(staleConflicts([], ["b.md"]), [], "nothing to attribute");
 });
