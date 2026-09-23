@@ -2,16 +2,24 @@ import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { MattermostService, UserError } from "../src/core.js";
 import { GitLabService } from "../src/gitlab.js";
-import { conflictPaths, duplicateKeys, duplicateVersions } from "../src/merge-inspection.js";
+import {
+  conflictPaths,
+  duplicateKeys,
+  duplicateRequirements,
+  duplicateVersions,
+} from "../src/merge-inspection.js";
 
 // One merge request checked against every other one open in the same project.
 //
 // Two classes of breakage hide here and only the first is git's job to report.
 //
 //   class 1  git says CONFLICT. Somebody has to look, so it rarely ships broken.
-//   class 2  git merges cleanly and the result is wrong anyway. Two branches that
-//            add the same properties key on different lines are not a textual
-//            conflict, so both lines survive and the later one silently wins.
+//   class 2  git merges cleanly and the merged tree is broken anyway. Two
+//            branches that add the same properties key on different lines are
+//            not a textual conflict, so both lines survive and the later one
+//            silently wins. The same shape in a requirements file does not stay
+//            quiet - pip refuses contradictory pins - but it breaks after the
+//            merge, on the default branch, instead of on either merge request.
 //
 // Class 2 is why this exists. Reading merge-tree's verdict is not enough; the
 // merged tree itself has to be inspected. The rules in src/merge-inspection.js
@@ -60,13 +68,28 @@ function present(sha) {
   }
 }
 
-function inspect(tree) {
+// requirements.txt, requirements-dev.txt, requirements/base.txt.
+const REQUIREMENTS = /(^|\/)requirements(\/[^/]+|[^/]*)\.txt$/;
+
+// A path git reported as conflicted keeps BOTH sides, plus <<<<<<< markers,
+// in the written tree. Any rule that reads its contents therefore sees
+// duplicates that no real merge would ever produce. Content rules skip those
+// paths: somebody is already going to open them, and calling one [silent]
+// would claim the opposite of what git just said.
+function inspect(tree, conflicted) {
   const files = git(["ls-tree", "-r", "--name-only", tree]).split("\n").filter(Boolean);
+  const merged = files.filter((name) => !conflicted.has(name));
   const found = [];
-  for (const path of files.filter((name) => name.endsWith(".properties"))) {
+  for (const path of merged.filter((name) => name.endsWith(".properties"))) {
     const keys = duplicateKeys(git(["show", `${tree}:${path}`]));
     if (keys.length) found.push(`${path} defines ${keys.join(", ")} twice`);
   }
+  for (const path of merged.filter((name) => REQUIREMENTS.test(name))) {
+    const names = duplicateRequirements(git(["show", `${tree}:${path}`]));
+    if (names.length) found.push(`${path} requires ${names.join(", ")} twice`);
+  }
+  // Two files claiming one version is a fact about the path list, which
+  // conflict markers cannot distort, so this rule still reads every path.
   for (const version of duplicateVersions(files)) {
     found.push(`two migrations claim V${version}`);
   }
@@ -122,11 +145,12 @@ async function run(gitlab) {
       allowFailure: true,
     });
     const tree = output.split("\n")[0].trim();
-    for (const path of conflictPaths(output)) {
+    const conflicted = new Set(conflictPaths(output));
+    for (const path of conflicted) {
       findings.push(`[conflict] !${other.mrIid} ${path}`);
     }
     if (!/^[0-9a-f]{40}$/.test(tree)) continue;
-    for (const note of inspect(tree)) {
+    for (const note of inspect(tree, conflicted)) {
       findings.push(`[silent]   !${other.mrIid} ${note}`);
     }
   }

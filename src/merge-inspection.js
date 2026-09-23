@@ -53,3 +53,50 @@ export function duplicateVersions(paths) {
   }
   return [...twice];
 }
+
+/** PEP 503: names differing only in case or in runs of -_. are one project. */
+function normalizeName(name) {
+  return String(name).toLowerCase().replace(/[-_.]+/g, "-");
+}
+
+function projectName(requirement) {
+  // A bare URL or VCS reference names its project only through #egg=.
+  if (/^[A-Za-z0-9+.-]+:\/\//.test(requirement)) {
+    return normalizeName(requirement.match(/[#&]egg=([A-Za-z0-9._-]+)/)?.[1] ?? "");
+  }
+  return normalizeName(requirement.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)/)?.[1] ?? "");
+}
+
+/**
+ * One package required twice in one requirements file.
+ *
+ * Two branches adding the same package on different lines is not a textual
+ * conflict, so both lines survive. Unlike a properties key this does not stay
+ * quiet: pip refuses to resolve contradictory pins. What makes it worth
+ * catching here is where the failure lands. Both merge requests were green,
+ * and the build breaks afterwards on the default branch.
+ *
+ * Lines are keyed by name and environment marker together, because the same
+ * package under two different markers is deliberate, not a duplicate.
+ */
+export function duplicateRequirements(text) {
+  const seen = new Set();
+  const twice = new Set();
+  // A trailing backslash continues the requirement on the following line.
+  for (const raw of String(text).replace(/\\\r?\n/g, " ").split("\n")) {
+    // pip treats # as a comment only at the start or after whitespace, which
+    // keeps the #egg= fragment of a VCS line intact.
+    const line = raw.replace(/\s+#.*$/, "").trim();
+    // Blank, comment, and option lines (-r, -e, --index-url) name no package.
+    if (!line || line.startsWith("#") || line.startsWith("-")) continue;
+    const semicolon = line.indexOf(";");
+    const requirement = semicolon === -1 ? line : line.slice(0, semicolon);
+    const marker = semicolon === -1 ? "" : line.slice(semicolon + 1).trim().replace(/\s+/g, " ");
+    const name = projectName(requirement.trim());
+    if (!name) continue;
+    const key = `${name};${marker}`;
+    if (seen.has(key)) twice.add(name);
+    seen.add(key);
+  }
+  return [...twice];
+}
